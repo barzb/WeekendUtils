@@ -12,12 +12,14 @@
 #include "Engine/World.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/WorldSettings.h"
+#include "GameService/GameServiceLocator.h"
 #include "HAL/FileManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Modules/ModuleManager.h"
 #include "SaveGame/SaveGamePreset.h"
 #include "SaveGame/Settings/SaveGameServiceSettings.h"
+#include "SaveGame/SaveGameService.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -140,6 +142,42 @@ TArray<FString> USaveGameUtils::FindAllLocalSaveGameSlotNames()
 		}
 	}
 	return Result;
+}
+
+bool USaveGameUtils::HasLoadedSaveGame()
+{
+	const USaveGameService* SaveGameService = UGameServiceLocator::FindService<USaveGameService>();
+	if (!SaveGameService)
+		return false;
+	
+	return SaveGameService->GetCurrentSaveGame().WasEverLoaded();
+}
+
+ESaveSlotState USaveGameUtils::GetLocalSaveGameSlotState(const FString& SlotName, int32 UserIndex)
+{
+	if (!UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex))
+		return ESaveSlotState::Empty;
+
+	const USaveGameService* SaveGameService = UGameServiceLocator::FindService<USaveGameService>();
+	if (!SaveGameService)
+		return ESaveSlotState::Present;
+	
+	const TOptional<FSlotName> SlotLastRestoredFrom = SaveGameService->GetCurrentSaveGame().GetSlotLastRestoredFrom();
+	const TOptional<FSlotName> SlotLastSavedTo = SaveGameService->GetCurrentSaveGame().GetSlotLastSavedTo();
+	if ((!SlotLastRestoredFrom.IsSet() || SlotLastRestoredFrom.GetValue() != SlotName)
+		&& (!SlotLastSavedTo.IsSet() || SlotLastSavedTo.GetValue() != SlotName))
+		return ESaveSlotState::Present;
+	
+	return ESaveSlotState::Loaded;
+}
+
+void USaveGameUtils::DeleteLocalSaveGame(const FString& SlotName, int32 UserIndex)
+{
+	if (!UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex))
+		return;
+
+	UE_LOG(LogSaveGameUtils, Log, TEXT("DeleteLocalSaveGame: Deleting \"%s\" (user %d)"), *SlotName, UserIndex);
+	UGameplayStatics::DeleteGameInSlot(SlotName, UserIndex);
 }
 
 void USaveGameUtils::DeleteAllLocalSaveGames(int32 UserIndex)

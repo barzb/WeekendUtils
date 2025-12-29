@@ -14,6 +14,14 @@
 
 #include "SaveGameUtils.generated.h"
 
+UENUM(BlueprintType)
+enum class ESaveSlotState : uint8
+{
+	Empty,
+	Present,
+	Loaded
+};
+
 UCLASS()
 class WEEKENDSAVEGAME_API USaveGameUtils : public UBlueprintFunctionLibrary
 {
@@ -43,10 +51,19 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Weekend Utils|Save Game")
 	static void DeleteAllLocalSaveGames(int32 UserIndex = 0);
+	static bool HasLoadedSaveGame();
 
 	UFUNCTION(BlueprintCallable, Category = "Weekend Utils|Save Game")
 	static bool IsSavingAllowedForWorld(UWorld* World);
+	static ESaveSlotState GetLocalSaveGameSlotState(const FString& SlotName, int32 UserIndex = 0);
+
+	UFUNCTION(BlueprintCallable, Category = "Weekend Utils|Save Game")
+	static void DeleteLocalSaveGame(const FString& SlotName, int32 UserIndex = 0);
 
 	UFUNCTION(BlueprintCallable, Category = "Weekend Utils|Save Game")
 	static TArray<FSoftClassPath> GetAllAvailableSaveLoadBehaviorClasses();
+	static void DeleteAllLocalSaveGames(int32 UserIndex = 0);
+
+	UFUNCTION(BlueprintCallable, Category = "Weekend Utils|Save Game")
+	static bool IsSavingAllowedForWorld(UWorld* World);
 };

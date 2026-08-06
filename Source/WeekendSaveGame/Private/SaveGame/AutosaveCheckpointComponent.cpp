@@ -47,7 +47,7 @@ void UAutosaveCheckpointComponent::OnRegister()
 	Super::OnRegister();
 
 	// OnRegister is also called on CDO's and all kinds of temporary objects, but we don't care about them:
-	if (IsTemplate() || GetWorld()->IsPreviewWorld())
+	if (IsTemplate() || !GetWorld() || GetWorld()->IsPreviewWorld() || !GetOwner())
 		return;
 
 #if WITH_EDITOR
@@ -182,7 +182,10 @@ void UAutosaveCheckpointComponent::FindOrCreateCheckpoint()
 		}
 		else
 		{
-			LinkedCheckpoint->GetRootComponent()->Mobility = Mobility;
+			if (USceneComponent* CheckpointRoot = LinkedCheckpoint->GetRootComponent())
+			{
+				CheckpointRoot->Mobility = Mobility;
+			}
 			LinkedCheckpoint->AttachToComponent(this, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		}
 		RenameCheckpoint();

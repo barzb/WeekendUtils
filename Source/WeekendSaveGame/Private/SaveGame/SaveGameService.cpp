@@ -187,6 +187,14 @@ bool USaveGameService::TryLoadCurrentSaveGameFromSlotSynchronous(const FSlotName
 	SetStatus(EStatus::Loading);
 
 	USaveGame* LoadedSaveGame = PerformSyncLoad(SlotName);
+	if (!IsValid(LoadedSaveGame))
+	{
+		// The file exists, but could not be deserialized (corrupt file, unknown SaveGame class, ..):
+		SetStatus(EStatus::Idle);
+		AddDebugEntry("[TryLoadCurrentSaveGameFromSlotSynchronous] failed to deserialize " + SlotName);
+		return false;
+	}
+
 	SetCurrentSaveGame(FCurrentSaveGame::CreateFromLoadedGame(*LoadedSaveGame, SlotName));
 
 	SetStatus(EStatus::Idle);
@@ -232,50 +240,59 @@ void USaveGameService::PreloadSaveGamesAsync(const TSet<FSlotName>& SlotNames, c
 		return;
 	}
 
+	// (i) Ordered pairs, so the two arrays passed to the callback stay index-correspondent:
+	using FPreloadResult = TPair<FSlotName, USaveGame*>;
+
 	class FPreloadRequest : public ISaveLoadRequest
 	{
 	public:
 		explicit FPreloadRequest(USaveGameService& InService,
 			const FSlotName& SlotName,
 			const TSharedRef<int32>& InRemainingSlots,
-			const TSharedRef<TSet<USaveGame*>>& InResultSaveGames,
-			const TSharedRef<TSet<FSlotName>>& InResultSlotNames,
+			const TSharedRef<TArray<FPreloadResult>>& InResults,
 			const TSharedRef<TSet<TStrongObjectPtr<UObject>>>& InObjectsToKeepInMemory,
 			const FOnPreloadCompleted& InCallback) :
 				ISaveLoadRequest(InService, "", SlotName),
 				RemainingSlots(InRemainingSlots),
-				ResultSaveGames(InResultSaveGames),
-				ResultSlotNames(InResultSlotNames),
+				Results(InResults),
 				ObjectsToKeepInMemory{InObjectsToKeepInMemory},
 				Callback(InCallback) {}
 
 		virtual void Finish(USaveGame* RequestedSaveGame, bool bSuccess) override
 		{
 			Runtime = FPlatformTime::Seconds() - StartTime;
-			if (bSuccess)
+			if (bSuccess && IsValid(RequestedSaveGame))
 			{
 				ObjectsToKeepInMemory->Add(TStrongObjectPtr{RequestedSaveGame});
-				ResultSaveGames->Add(RequestedSaveGame);
-				ResultSlotNames->Add(*SlotName);
+				Results->Emplace(*SlotName, RequestedSaveGame);
 			}
 			if (--(*RemainingSlots) <= 0)
 			{
 				Service.AddDebugEntry("PreloadSaveGamesAsync", "FPreloadRequest::Finish", bSuccess, Runtime);
-				Callback.ExecuteIfBound(ResultSaveGames->Array(), ResultSlotNames->Array());
+
+				TArray<USaveGame*> ResultSaveGames;
+				TArray<FSlotName> ResultSlotNames;
+				ResultSaveGames.Reserve(Results->Num());
+				ResultSlotNames.Reserve(Results->Num());
+				for (const FPreloadResult& Result : *Results)
+				{
+					ResultSlotNames.Add(Result.Key);
+					ResultSaveGames.Add(Result.Value);
+				}
+
+				Callback.ExecuteIfBound(ResultSaveGames, ResultSlotNames);
 				ObjectsToKeepInMemory->Empty();
 			}
 		}
 
 		TSharedRef<int32> RemainingSlots;
-		TSharedRef<TSet<USaveGame*>> ResultSaveGames;
-		TSharedRef<TSet<FSlotName>> ResultSlotNames;
+		TSharedRef<TArray<FPreloadResult>> Results;
 		TSharedRef<TSet<TStrongObjectPtr<UObject>>> ObjectsToKeepInMemory;
 		FOnPreloadCompleted Callback;
 	};
 
 	TSharedRef<int32> RemainingSlots = MakeShared<int32>(0);
-	TSharedRef<TSet<USaveGame*>> ResultSaveGames = MakeShared<TSet<USaveGame*>>();
-	TSharedRef<TSet<FSlotName>> ResultSlotNames = MakeShared<TSet<FSlotName>>();
+	TSharedRef<TArray<FPreloadResult>> Results = MakeShared<TArray<FPreloadResult>>();
 
 	//  As long as the preload queue is working, prevent already loaded objects from being garbage collected:
 	TSharedRef<TSet<TStrongObjectPtr<UObject>>> ObjectsToKeepInMemory = MakeShared<TSet<TStrongObjectPtr<UObject>>>();
@@ -287,7 +304,14 @@ void USaveGameService::PreloadSaveGamesAsync(const TSet<FSlotName>& SlotNames, c
 			continue;
 
 		(*RemainingSlots)++;
-		Requests.Add(SlotName, MakeShared<FPreloadRequest>(*this, SlotName, RemainingSlots, ResultSaveGames, ResultSlotNames, ObjectsToKeepInMemory, Callback));
+		Requests.Add(SlotName, MakeShared<FPreloadRequest>(*this, SlotName, RemainingSlots, Results, ObjectsToKeepInMemory, Callback));
+	}
+
+	// No slot had a save file -> nothing will ever call Finish(), so notify here:
+	if (Requests.IsEmpty())
+	{
+		Callback.ExecuteIfBound({}, {});
+		return;
 	}
 
 	for (auto SlotAndRequest = Requests.CreateIterator(); SlotAndRequest; ++SlotAndRequest)
@@ -344,9 +368,7 @@ void USaveGameService::CreateAndRestoreNewSaveGameAsCurrent()
 
 void USaveGameService::DeleteSaveGameAtSlot(const FSlotName& SlotName, bool bMoveToBackupFolder)
 {
-	if (!CachedSaveGames.Contains(SlotName))
-		return;
-
+	// (i) Not gated on the cache: a slot that was never preloaded still has a file to delete.
 	if (DoesSaveFileExist(SlotName))
 	{
 		SaveGameSerializer->TryDeleteGameInSlot(SlotName, GetCurrentUserIndex(),
@@ -468,12 +490,12 @@ bool USaveGameService::IsAutosavingAllowed() const
 
 bool USaveGameService::IsSavingAllowed() const
 {
-	return (!IsBusySavingOrLoading() && ActiveSaveLocks.IsEmpty());
+	return (SaveLoadBehavior && !IsBusySavingOrLoading() && ActiveSaveLocks.IsEmpty());
 }
 
 bool USaveGameService::IsLoadingAllowed() const
 {
-	return (!IsBusySavingOrLoading() && ActiveLoadLocks.IsEmpty());
+	return (SaveLoadBehavior && !IsBusySavingOrLoading() && ActiveLoadLocks.IsEmpty());
 }
 
 bool USaveGameService::IsBusyLoading() const
@@ -510,7 +532,7 @@ USaveLoadBehavior& USaveGameService::CreateSaveLoadBehavior(const USaveGameServi
 
 	TSoftClassPtr<USaveLoadBehavior> BehaviorClass = Settings.SaveLoadBehavior;
 
-#if WITH_EDITORONLY_DATA
+#if WITH_EDITOR
 	BehaviorClass = (!GetWorld() || GetWorld()->WorldType == EWorldType::PIE)
 		? Settings.PlayInEditorSaveLoadBehavior
 		: Settings.PlayInStandaloneSaveLoadBehavior;
@@ -592,6 +614,10 @@ void USaveGameService::ShutdownService()
 {
 	WorldTransitionSaveLock.Reset();
 	WorldTransitionLoadLock.Reset();
+	CurrentLevelSaveLock.Reset();
+	ActiveAutosaveLocks.Empty();
+	ActiveSaveLocks.Empty();
+	ActiveLoadLocks.Empty();
 
 	SetStatus(EStatus::Uninitialized);
 	SaveGameSerializer = nullptr;
@@ -701,12 +727,12 @@ TMap<USaveGameService::FSlotName, const USaveGame*> USaveGameService::GetAllCach
 
 bool USaveGameService::IsCachedSaveGameSnapshot(const USaveGame& SaveGameObject) const
 {
-	return CachedSaveGames.GetAllObjectsBySlot().FindKey(&SaveGameObject) != nullptr;
+	return CachedSaveGames.Contains(SaveGameObject);
 }
 
 bool USaveGameService::HasAnyCachedSaveGameSnapshot() const
 {
-	return GetAllCachedSaveGameSnapshots().Num() > 0;
+	return !CachedSaveGames.IsEmpty();
 }
 
 bool USaveGameService::DoesSaveFileExist(const FSlotName& SlotName) const
@@ -716,7 +742,7 @@ bool USaveGameService::DoesSaveFileExist(const FSlotName& SlotName) const
 
 TSet<USaveGameService::FSlotName> USaveGameService::GetSlotNamesAllowedForSaving() const
 {
-	return SaveLoadBehavior->GetSaveSlotNamesAllowedForSaving(GetCurrentSaveGame());
+	return SaveLoadBehavior ? SaveLoadBehavior->GetSaveSlotNamesAllowedForSaving(GetCurrentSaveGame()) : TSet<FSlotName>{};
 }
 
 TSet<USaveGameService::FSlotName> USaveGameService::GetSlotNamesAllowedForLoading() const
@@ -762,17 +788,28 @@ void USaveGameService::PerformAsyncSave(const FSlotName& SlotName)
 
 void USaveGameService::HandleAsyncSaveCompleted(const FSlotName& SlotName, const int32 UserIndex, bool bSuccess)
 {
-	CurrentSaveGame.UpdateTimeOfLastSave();
-	CurrentSaveGame.SetSlotLastSavedTo(SlotName);
+	if (bSuccess && CurrentSaveGame.IsValid())
+	{
+		CurrentSaveGame.UpdateTimeOfLastSave();
+		CurrentSaveGame.SetSlotLastSavedTo(SlotName);
 
-	// Cache current save game as snapshot copy, so it can be restored as the state it was saved in:
-	CachedSaveGames.CopyToCache(*this, SlotName, CurrentSaveGame.GetRef());
-	OnAvailableSaveGamesChanged.Broadcast();
+		// Cache current save game as snapshot copy, so it can be restored as the state it was saved in:
+		CachedSaveGames.CopyToCache(*this, SlotName, CurrentSaveGame.GetRef());
+		OnAvailableSaveGamesChanged.Broadcast();
+	}
+	else
+	{
+		UE_LOG(LogSaveGameService, Warning, TEXT("Saving to slot %s failed."), *SlotName);
+		AddDebugEntry("HandleAsyncSaveCompleted", "failed for slot: " + SlotName);
+	}
 
 	ConsumeSaveRequestsInProgress(CurrentSaveGame.GetMutablePtr(), bSuccess);
 	SetStatus(EStatus::Idle);
 
-	OnAfterSaved.Broadcast(CurrentSaveGame);
+	if (bSuccess)
+	{
+		OnAfterSaved.Broadcast(CurrentSaveGame);
+	}
 
 	ProcessPendingRequests();
 }
@@ -780,7 +817,15 @@ void USaveGameService::HandleAsyncSaveCompleted(const FSlotName& SlotName, const
 void USaveGameService::PerformAsyncLoad(const FSlotName& SlotName)
 {
 	if (!DoesSaveFileExist(SlotName))
+	{
+		// (!) Requests are already in progress at this point and must be consumed,
+		// otherwise the service stays busy loading forever.
+		ConsumeLoadRequestsInProgress(nullptr, false);
+		SetStatus(EStatus::Idle);
+		AddDebugEntry("PerformAsyncLoad", "No save file exists for slot: " + SlotName);
+		ProcessPendingRequests();
 		return;
+	}
 
 	SetStatus(EStatus::Loading);
 
@@ -821,13 +866,19 @@ void USaveGameService::HandleAsyncLoadCompleted(const FSlotName& SlotName, const
 
 void USaveGameService::HandleLevelChanged(UWorld* NewWorld)
 {
+	if (!IsValid(NewWorld))
+		return;
+
 	// don't update save locks for e.g. editor preview worlds such as the thumbnail renderer worlds
 	if (NewWorld->WorldType != EWorldType::Game && NewWorld->WorldType != EWorldType::PIE)
 		return;
 
 	UpdateSaveLockForLevel(NewWorld);
 
-	SaveLoadBehavior->HandleLevelChanged(*this, NewWorld);
+	if (SaveLoadBehavior)
+	{
+		SaveLoadBehavior->HandleLevelChanged(*this, NewWorld);
+	}
 }
 
 void USaveGameService::UpdateSaveLockForLevel(UWorld* NewWorld)
@@ -915,6 +966,9 @@ void USaveGameService::SetStatus(const EStatus& NewStatus)
 
 void USaveGameService::AddDebugEntry(const FString& Entry)
 {
+	if (DebugHistoryEntriesToKeep < 1)
+		return;
+
 	DebugHistory.Add(FString::Printf(TEXT("(%s UTC)\t %s"), *FDateTime::UtcNow().ToString(), *Entry));
 	UE_LOG(LogSaveGameService, Verbose, TEXT("%s"), *Entry);
 
@@ -941,6 +995,21 @@ void USaveGameService::AddDebugEntry(const FString& Operation, const FDebugConte
 bool USaveGameService::FSaveGamesCache::Contains(const FSlotName& SlotName) const
 {
 	return SnapshotsBySlot.Num() > 0 && SnapshotsBySlot.Contains(SlotName);
+}
+
+bool USaveGameService::FSaveGamesCache::Contains(const USaveGame& SaveGameObject) const
+{
+	for (const TPair<FSlotName, TStrongObjectPtr<const USaveGame>>& Itr : SnapshotsBySlot)
+	{
+		if (Itr.Value.Get() == &SaveGameObject)
+			return true;
+	}
+	return false;
+}
+
+bool USaveGameService::FSaveGamesCache::IsEmpty() const
+{
+	return SnapshotsBySlot.IsEmpty();
 }
 
 void USaveGameService::FSaveGamesCache::Remove(const FSlotName& SlotName)

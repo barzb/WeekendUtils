@@ -182,10 +182,30 @@ FString ULevelObjectRestorer::MakeSafeUniqueObjectId(const UObject& Object)
 	// (i) Stop GetPathName() at the world-outer, then prefix the path with just the world name, not the whole path to the world.
 	// This is done to avoid ID mismatches between PIE worlds and standalone worlds, so standalone saves can be properly loaded in PIE.
 	// See UpgradeSaveGameModule() for more information.
-	const FString ObjectPath = Object.GetPathName(Object.GetTypedOuter<ULevel>());
-	const FString LevelName = Object.GetTypedOuter<ULevel>()->GetName();
-	const FString WorldName = Object.GetWorld()->GetName();
+	const ULevel* Level = Object.GetTypedOuter<ULevel>();
+	const UWorld* World = Object.GetWorld();
+	if (!Level || !World)
+	{
+		UE_LOG(LogLevelObjectRestorer, Error, TEXT("Cannot build a unique ObjectId for \"%s\": missing level or world outer."), *Object.GetPathName());
+		return Object.GetPathName();
+	}
+
+	const FString ObjectPath = Object.GetPathName(Level);
+	const FString LevelName = Level->GetName();
+	const FString WorldName = World->GetName();
 	return WorldName + ":" + LevelName + "." + ObjectPath;
+}
+
+TArray<TWeakObjectPtr<>> ULevelObjectRestorer::GetAllRegisteredObjects() const
+{
+	TArray<TWeakObjectPtr<>> Result;
+	Result.Reserve(SimpleRegisteredObjects.Num() + RegisteredObjectsWithTransform.Num());
+	Result.Append(SimpleRegisteredObjects.Array());
+	for (const TWeakObjectPtr<>& Object : RegisteredObjectsWithTransform)
+	{
+		Result.AddUnique(Object);
+	}
+	return Result;
 }
 
 void ULevelObjectRestorer::Serialize(FArchive& Ar)
@@ -195,15 +215,18 @@ void ULevelObjectRestorer::Serialize(FArchive& Ar)
 	{
 		PreSaveModule();
 
-		for (TWeakObjectPtr<> RegisteredObject : SimpleRegisteredObjects.Union(RegisteredObjectsWithTransform))
+		for (TWeakObjectPtr<> RegisteredObject : GetAllRegisteredObjects())
 		{
 			if (!RegisteredObject.IsValid())
 				continue;
 
+			const FString* ObjectId = UniqueIdsOfRegisteredObjects.Find(RegisteredObject);
+			if (!ObjectId)
+				continue;
+
 			UObject* Object = RegisteredObject.Get();
-			const FString& ObjectId = UniqueIdsOfRegisteredObjects[RegisteredObject];
 			const bool bHasTransform = RegisteredObjectsWithTransform.Contains(RegisteredObject);
-			FLevelObjectSaveGameState& State = ObjectStates.FindOrAdd(ObjectId);
+			FLevelObjectSaveGameState& State = ObjectStates.FindOrAdd(*ObjectId);
 			SaveObjectToState(*Object, bHasTransform, IN OUT State);
 		}
 	}
@@ -225,16 +248,22 @@ void ULevelObjectRestorer::Serialize(FArchive& Ar)
 		UE_LOG(LogLevelObjectRestorer, Log, TEXT("Restoring %s with ModuleVersion %d"), *GetPathName(), ModuleVersion);
 		UpgradeSaveGameModule();
 
-		for (TWeakObjectPtr<> RegisteredObject : SimpleRegisteredObjects.Union(RegisteredObjectsWithTransform))
+		for (TWeakObjectPtr<> RegisteredObject : GetAllRegisteredObjects())
 		{
 			if (!RegisteredObject.IsValid())
 				continue;
 
+			const FString* ObjectId = UniqueIdsOfRegisteredObjects.Find(RegisteredObject);
+			if (!ObjectId)
+				continue;
+
+			const FLevelObjectSaveGameState* State = ObjectStates.Find(*ObjectId);
+			if (!State)
+				continue;
+
 			UObject* Object = RegisteredObject.Get();
-			const FString& ObjectId = UniqueIdsOfRegisteredObjects[RegisteredObject];
 			const bool bHasTransform = RegisteredObjectsWithTransform.Contains(RegisteredObject);
-			FLevelObjectSaveGameState& State = ObjectStates.FindOrAdd(ObjectId);
-			RestoreObjectFromState(State, bHasTransform, IN OUT *Object);
+			RestoreObjectFromState(*State, bHasTransform, IN OUT *Object);
 		}
 
 		PostRestoreModule();
@@ -254,6 +283,10 @@ void ULevelObjectRestorer::BeginDestroy()
 
 void ULevelObjectRestorer::SaveObjectToState(UObject& Object, bool bSaveTransform, FLevelObjectSaveGameState& InOutState) const
 {
+	// (!) FMemoryWriter writes from offset 0 but never shrinks the array, so stale bytes of a
+	// previous, larger state would survive here:
+	InOutState.ByteData.Reset();
+
 	FMemoryWriter MemWriter(InOutState.ByteData);
 	if (bSaveTransform)
 	{
@@ -269,6 +302,10 @@ void ULevelObjectRestorer::SaveObjectToState(UObject& Object, bool bSaveTransfor
 
 void ULevelObjectRestorer::RestoreObjectFromState(const FLevelObjectSaveGameState& State, bool bRestoreTransform, UObject& InOutObject) const
 {
+	// Nothing was ever saved for this object -> leave it in its level-authored state:
+	if (State.ByteData.IsEmpty())
+		return;
+
 	FMemoryReader MemReader(State.ByteData);
 	if (bRestoreTransform)
 	{

@@ -88,9 +88,9 @@ bool FModularSaveGameHeader::TryRead(FMemoryReader& MemoryReader)
 		return false;
 	}
 
-	// Check incompatible save file version:
+	// Check incompatible save file version, in either direction:
 	MemoryReader << SaveGameFileVersion;
-	if (SaveGameFileVersion < MODULAR_SAVEGAME_FILE_VERSION)
+	if (SaveGameFileVersion != MODULAR_SAVEGAME_FILE_VERSION)
 	{
 		MemoryReader.Seek(0);
 		return false;
@@ -111,6 +111,14 @@ bool FModularSaveGameHeader::TryRead(FMemoryReader& MemoryReader)
 	MemoryReader << SaveGameClassName;
 	FObjectAndNameAsStringProxyArchive ProxyArchive(MemoryReader, true);
 	CustomHeaderData.Serialize(ProxyArchive);
+
+	// A truncated or malformed file trips the archive's error flag instead of throwing:
+	if (MemoryReader.IsError())
+	{
+		Clear();
+		MemoryReader.Seek(0);
+		return false;
+	}
 
 	return true;
 }
@@ -265,7 +273,7 @@ bool UModularSaveGameSerializer::TryDeserializeSaveGame(const TArray<uint8>& InS
 		return false;
 
 	// Restore the save game class info:
-	const UClass* SaveGameClass = UClass::TryFindTypeSlow<UClass>(SaveHeader.SaveGameClassName);
+	UClass* SaveGameClass = UClass::TryFindTypeSlow<UClass>(SaveHeader.SaveGameClassName);
 	if (!SaveGameClass)
 	{
 		SaveGameClass = LoadObject<UClass>(nullptr, *SaveHeader.SaveGameClassName);
@@ -274,15 +282,33 @@ bool UModularSaveGameSerializer::TryDeserializeSaveGame(const TArray<uint8>& InS
 	if (!SaveGameClass)
 		return false;
 
-	// Create (empty) save game object and then restore all of its saved properties:
-	OutSaveGameObject = NewObject<USaveGame>(GetOuter(), SaveGameClass);
-	FWeekendUtilsSubobjectProxyArchive Archive(MemoryReader, *OutSaveGameObject);
-	OutSaveGameObject->Serialize(Archive);
+	// (!) The class name comes from the user-writable save file, so a tampered file must not be able
+	// to instance an arbitrary class that is then reinterpreted as a USaveGame:
+	if (!SaveGameClass->IsChildOf(USaveGame::StaticClass())
+		|| SaveGameClass->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
+	{
+		UE_LOG(LogSaveGameService, Error, TEXT("UModularSaveGameSerializer: save file names \"%s\", which is not an instantiable USaveGame class. Refusing to load."), 	*SaveHeader.SaveGameClassName);
+		return false;
+	}
 
-	if (UModularSaveGame* ModularSaveGame = Cast<UModularSaveGame>(OutSaveGameObject))
+	// Create (empty) save game object and then restore all of its saved properties:
+	USaveGame* LoadedSaveGame = NewObject<USaveGame>(GetOuter(), SaveGameClass);
+	FWeekendUtilsSubobjectProxyArchive Archive(MemoryReader, *LoadedSaveGame);
+	LoadedSaveGame->Serialize(Archive);
+
+	// A corrupt payload leaves the archive in an error state -> don't hand out a half-restored object:
+	if (MemoryReader.IsError())
+	{
+		UE_LOG(LogSaveGameService, Error, TEXT("UModularSaveGameSerializer: deserialization of \"%s\" failed (corrupt or incompatible save data)."), *SaveHeader.SaveGameClassName);
+		OutSaveGameObject = nullptr;
+		return false;
+	}
+
+	if (UModularSaveGame* ModularSaveGame = Cast<UModularSaveGame>(LoadedSaveGame))
 	{
 		ModularSaveGame->SetInstancedHeaderData(SaveHeader.CustomHeaderData);
 	}
 
+	OutSaveGameObject = LoadedSaveGame;
 	return true;
 }

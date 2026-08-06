@@ -32,7 +32,8 @@ namespace
 	using FSlotName = FString;
 
 #if WITH_EDITOR
-	const FString PIE_SETTINGS_INI_FILE = GGameUserSettingsIni;
+	const FString& GetPieSettingsIniFile() { return GGameUserSettingsIni; }
+
 	const TCHAR*  PIE_SETTINGS_INI_SECTION = TEXT("WeekendUtils.SaveGameUtils");
 	const TCHAR*  PIE_SETTING_OVERRIDE_SLOT_NAME = TEXT("OverridePlayInEditorSaveGameSlotName");
 	const TCHAR*  PIE_SETTING_SHOULD_OVERRIDE_SLOT = TEXT("ShouldOverridePlayInEditorSaveGameSlot");
@@ -43,7 +44,8 @@ namespace
 	FSoftObjectPath GetLevel(UWorld* World)
 	{
 #if WITH_EDITOR
-		World = (IsValid(World) ? World : GEditor->PlayWorld.Get());
+		// (i) GEditor is null in editor-less commandlets, which still compile WITH_EDITOR:
+		World = (IsValid(World) ? World : (GEditor ? GEditor->PlayWorld.Get() : nullptr));
 #endif
 		return FSoftObjectPath(GetPathNameSafe(World));
 	}
@@ -51,9 +53,13 @@ namespace
 	TSubclassOf<AGameModeBase> GetGameModeClass(UWorld* World)
 	{
 #if WITH_EDITOR
-		World = (IsValid(World) ? World : GEditor->PlayWorld.Get());
+		World = (IsValid(World) ? World : (GEditor ? GEditor->PlayWorld.Get() : nullptr));
 #endif
-		return (IsValid(World) ? World->GetWorldSettings()->DefaultGameMode : nullptr);
+		if (!IsValid(World))
+			return nullptr;
+
+		const AWorldSettings* WorldSettings = World->GetWorldSettings();
+		return (WorldSettings ? WorldSettings->DefaultGameMode : nullptr);
 	}
 }
 
@@ -73,8 +79,8 @@ void USaveGameUtils::GetOverridePlayInEditorSaveGameSlot(bool& bOutIsOverridden,
 #if WITH_EDITOR
 	const FString SectionName = StaticClass()->GetName();
 	bool bSuccess = true;
-	bSuccess &= GConfig->GetString(PIE_SETTINGS_INI_SECTION, PIE_SETTING_OVERRIDE_SLOT_NAME, OUT OutSlotName, PIE_SETTINGS_INI_FILE);
-	bSuccess &= GConfig->GetBool(PIE_SETTINGS_INI_SECTION, PIE_SETTING_SHOULD_OVERRIDE_SLOT, OUT bOutIsOverridden, PIE_SETTINGS_INI_FILE);
+	bSuccess &= GConfig->GetString(PIE_SETTINGS_INI_SECTION, PIE_SETTING_OVERRIDE_SLOT_NAME, OUT OutSlotName, GetPieSettingsIniFile());
+	bSuccess &= GConfig->GetBool(PIE_SETTINGS_INI_SECTION, PIE_SETTING_SHOULD_OVERRIDE_SLOT, OUT bOutIsOverridden, GetPieSettingsIniFile());
 	bOutIsOverridden &= bSuccess;
 #else
 	unimplemented();
@@ -84,9 +90,9 @@ void USaveGameUtils::GetOverridePlayInEditorSaveGameSlot(bool& bOutIsOverridden,
 void USaveGameUtils::SetOverridePlayInEditorSaveGameSlot(bool bOverride, FString SlotName)
 {
 #if WITH_EDITOR
-	GConfig->SetBool(PIE_SETTINGS_INI_SECTION, PIE_SETTING_SHOULD_OVERRIDE_SLOT, bOverride, PIE_SETTINGS_INI_FILE);
-	GConfig->SetString(PIE_SETTINGS_INI_SECTION, PIE_SETTING_OVERRIDE_SLOT_NAME, *SlotName, PIE_SETTINGS_INI_FILE);
-	GConfig->Flush(false, PIE_SETTINGS_INI_FILE);
+	GConfig->SetBool(PIE_SETTINGS_INI_SECTION, PIE_SETTING_SHOULD_OVERRIDE_SLOT, bOverride, GetPieSettingsIniFile());
+	GConfig->SetString(PIE_SETTINGS_INI_SECTION, PIE_SETTING_OVERRIDE_SLOT_NAME, *SlotName, GetPieSettingsIniFile());
+	GConfig->Flush(false, GetPieSettingsIniFile());
 #else
 	unimplemented();
 #endif
@@ -98,8 +104,8 @@ void USaveGameUtils::GetOverrideSaveLoadBehavior(bool& bOutIsOverridden, FSoftCl
 	const FString SectionName = StaticClass()->GetName();
 	bool bSuccess = true;
 	FString BehaviorClassString;
-	bSuccess &= GConfig->GetBool(PIE_SETTINGS_INI_SECTION, PIE_SETTING_SHOULD_OVERRIDE_SAVELOADBEHAVIOR, OUT bOutIsOverridden, PIE_SETTINGS_INI_FILE);
-	bSuccess &= GConfig->GetString(PIE_SETTINGS_INI_SECTION, PIE_SETTING_OVERRIDE_SAVELOADBEHAVIOR, OUT BehaviorClassString, PIE_SETTINGS_INI_FILE);
+	bSuccess &= GConfig->GetBool(PIE_SETTINGS_INI_SECTION, PIE_SETTING_SHOULD_OVERRIDE_SAVELOADBEHAVIOR, OUT bOutIsOverridden, GetPieSettingsIniFile());
+	bSuccess &= GConfig->GetString(PIE_SETTINGS_INI_SECTION, PIE_SETTING_OVERRIDE_SAVELOADBEHAVIOR, OUT BehaviorClassString, GetPieSettingsIniFile());
 	OutBehaviorClass = FSoftClassPath(BehaviorClassString);
 	bOutIsOverridden &= bSuccess && !OutBehaviorClass.IsNull();
 #else
@@ -110,9 +116,9 @@ void USaveGameUtils::GetOverrideSaveLoadBehavior(bool& bOutIsOverridden, FSoftCl
 void USaveGameUtils::SetOverrideSaveLoadBehavior(bool bOverride, FSoftClassPath SetOverrideSaveLoadBehavior)
 {
 #if WITH_EDITOR
-	GConfig->SetBool(PIE_SETTINGS_INI_SECTION, PIE_SETTING_SHOULD_OVERRIDE_SAVELOADBEHAVIOR, bOverride, PIE_SETTINGS_INI_FILE);
-	GConfig->SetString(PIE_SETTINGS_INI_SECTION, PIE_SETTING_OVERRIDE_SAVELOADBEHAVIOR, *SetOverrideSaveLoadBehavior.ToString(), PIE_SETTINGS_INI_FILE);
-	GConfig->Flush(false, PIE_SETTINGS_INI_FILE);
+	GConfig->SetBool(PIE_SETTINGS_INI_SECTION, PIE_SETTING_SHOULD_OVERRIDE_SAVELOADBEHAVIOR, bOverride, GetPieSettingsIniFile());
+	GConfig->SetString(PIE_SETTINGS_INI_SECTION, PIE_SETTING_OVERRIDE_SAVELOADBEHAVIOR, *SetOverrideSaveLoadBehavior.ToString(), GetPieSettingsIniFile());
+	GConfig->Flush(false, GetPieSettingsIniFile());
 #else
 	unimplemented();
 #endif

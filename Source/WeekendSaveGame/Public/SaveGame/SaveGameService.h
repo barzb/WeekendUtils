@@ -250,6 +250,8 @@ protected:
 	{
 	public:
 		bool Contains(const FSlotName& SlotName) const;
+		bool Contains(const USaveGame& SaveGameObject) const;
+		bool IsEmpty() const;
 		void Remove(const FSlotName& SlotName);
 		void Clear();
 		void CopyToCache(USaveGameService& InService, const FSlotName& SlotName, const USaveGame& SaveGame);

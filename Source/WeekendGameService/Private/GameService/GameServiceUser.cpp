@@ -14,6 +14,8 @@
 #include "GameService/GameServiceManager.h"
 #include "GameService/WorldGameServiceRunner.h"
 
+#include "Engine/LocalPlayer.h"
+#include "GameFramework/PlayerController.h"
 #include "Subsystems/EngineSubsystem.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Subsystems/LocalPlayerSubsystem.h"
@@ -109,12 +111,18 @@ void FGameServiceUser::WaitForDependencies(FOnWaitingFinished Callback, const UO
 
 	if (!AreServiceDependenciesReady(WorldContext))
 	{
+		UWorld* ServiceWorld = Config.GetWorld(WorldContext);
+		if (!IsValid(ServiceWorld))
+		{
+			UE_LOG(LogGameService, Warning, TEXT("%s cannot wait for dependencies: no valid world for the given context."), *GetNameSafe(Config.GetUserObject()));
+			return;
+		}
+
 		// Start all service dependencies, which just happens:
 		UGameServiceManager& ServiceManager = UGameServiceManager::SummonInstance(WorldContext);
-		UWorld& ServiceWorld = *Config.GetWorld(WorldContext);
 		for (const FGameServiceClass& ServiceClass : Config.ServiceDependencies)
 		{
-			const bool bWasDependencyStarted = ServiceManager.TryStartService(ServiceWorld, ServiceClass).IsSet();
+			const bool bWasDependencyStarted = ServiceManager.TryStartService(*ServiceWorld, ServiceClass).IsSet();
 			ensureMsgf(bWasDependencyStarted, TEXT("%s is waiting for dependency %s, which could not be started. Is %s properly configured?"),
 				*GetNameSafe(Config.GetUserObject()), *ServiceClass->GetName(), *ServiceClass->GetName());
 		}
@@ -278,7 +286,8 @@ TWeakObjectPtr<USubsystem> FGameServiceUser::FindSubsystemDependency(const TSubc
 	// [LOCAL PLAYER]
 	if (SubsystemClass->IsChildOf<ULocalPlayerSubsystem>())
 	{
-		const ULocalPlayer* FirstLocalPlayer = ServiceWorld->GetFirstPlayerController()->GetLocalPlayer();
+		const APlayerController* FirstPlayerController = ServiceWorld->GetFirstPlayerController();
+		const ULocalPlayer* FirstLocalPlayer = IsValid(FirstPlayerController) ? FirstPlayerController->GetLocalPlayer() : nullptr;
 		return Cache(Sanitize(IsValid(FirstLocalPlayer) ? FirstLocalPlayer->GetSubsystemBase(*SubsystemClass) : nullptr));
 	}
 
@@ -316,11 +325,15 @@ void FGameServiceUser::PollPendingDependencyWaitCallbacks(const UObject* WorldCo
 		return;
 	}
 
-	// Keep polling:
+	// Keep polling. The context is captured weakly, because it can die while the service user lives on:
+	const TWeakObjectPtr<const UObject> WeakWorldContext = MakeWeakObjectPtr(WorldContext);
 	FTimerManager& Timer = Config.GetWorld(WorldContext)->GetTimerManager();
-	PendingDependencyWaitTimerHandle = Timer.SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(Config.GetUserObject(), [this, WorldContext]()
+	PendingDependencyWaitTimerHandle = Timer.SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(Config.GetUserObject(), [this, WeakWorldContext]()
 	{
-		PollPendingDependencyWaitCallbacks(WorldContext);
+		if (!WeakWorldContext.IsValid())
+			return;
+
+		PollPendingDependencyWaitCallbacks(WeakWorldContext.Get());
 	}));
 }
 

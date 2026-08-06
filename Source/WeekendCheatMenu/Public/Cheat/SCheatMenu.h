@@ -12,6 +12,7 @@
 #include "CheatMenuAction.h"
 #include "CoreMinimal.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
+#include "Widgets/Input/SComboBox.h"
 #include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -68,6 +69,13 @@ protected:
 	TSharedPtr<SVerticalBox> TabList = nullptr;
 	TSharedPtr<SWrapBox> SectionList = nullptr;
 	TSharedPtr<STextBlock> ErrorText = nullptr;
+
+	/**
+	 * Combobox widgets tend to lose focus when they open, which can lead to them closing again when moving the cursor.
+	 * To counter that, their OnComboBoxOpening method will reset the focus to the combobox button, and for that we need
+	 * to cache the pointers to the combobox (indexed by a unique ID).
+	 */
+	TMap<FGuid, TWeakPtr<SComboBox<TSharedPtr<FString>>>> ComboBoxPointers;
 
 	FOnCheatExecuted OnCheatExecuted;
 	FSimpleDelegate OnCloseRequested;

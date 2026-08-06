@@ -114,7 +114,9 @@ void ICheatMenuAction::LogVeryVerbose(const FString& Message) const
 
 APlayerController* ICheatMenuAction::GetLocalPlayerController() const
 {
-	return GetWorld()->GetFirstPlayerController();
+	// (i) World is only set for the duration of ExecuteWithArgs() and null outside of it:
+	const UWorld* CurrentWorld = GetWorld();
+	return IsValid(CurrentWorld) ? CurrentWorld->GetFirstPlayerController() : nullptr;
 }
 
 APlayerState* ICheatMenuAction::GetLocalPlayerState() const
@@ -146,21 +148,30 @@ FString ICheatMenuAction::GetDefaultMissingArgumentError() const
 
 UObject* ICheatMenuAction::GetOrCreateSharedContextObjectForWorld()
 {
-	static AActor* ContextObject = nullptr;
-	if (!IsValid(ContextObject) || ContextObject->GetWorld() != GetWorld())
+	// (!) Weak, because this static outlives the world the actor was spawned in:
+	static TWeakObjectPtr<AActor> ContextObject = nullptr;
+
+	UWorld* CurrentWorld = GetWorld();
+	if (!IsValid(CurrentWorld))
+		return nullptr;
+
+	if (!ContextObject.IsValid() || ContextObject->GetWorld() != CurrentWorld)
 	{
-		if (IsValid(ContextObject))
+		if (ContextObject.IsValid())
 		{
 			ContextObject->Destroy();
+			ContextObject.Reset();
 		}
+
+		// (i) Unnamed on purpose: a fixed name lets SpawnActor fail while a previous context actor
+		// of that name is still pending destruction.
 		FActorSpawnParameters Params;
-		Params.Name = FName("CheatCommand_Context");
 		Params.ObjectFlags = RF_Standalone|RF_Transient;
 #if WITH_EDITOR
 		Params.bHideFromSceneOutliner = true;
 #endif
 
-		ContextObject = GetWorld()->SpawnActor<AActor>(Params);
+		ContextObject = CurrentWorld->SpawnActor<AActor>(Params);
 	}
-	return ContextObject;
+	return ContextObject.Get();
 }

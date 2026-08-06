@@ -53,7 +53,7 @@ public:
 		if (NumMissing <= 0)
 			return *this;
 
-		ObjectList.SetNumUninitialized(InitDataList.Num());
+		ObjectList.SetNum(InitDataList.Num());
 		for (int32 i = (InitDataList.Num() - NumMissing); i < InitDataList.Num(); ++i)
 		{
 			ObjectList[i] = Function(InitDataList[i]);
@@ -69,7 +69,7 @@ public:
 		if (NumMissing <= 0)
 			return *this;
 
-		ObjectList.SetNumUninitialized(InitDataList.Num());
+		ObjectList.SetNum(InitDataList.Num());
 		for (int32 i = (InitDataList.Num() - NumMissing); i < InitDataList.Num(); ++i)
 		{
 			ObjectList[i] = Function(InitDataList[i], i);

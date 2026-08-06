@@ -14,6 +14,8 @@
 #include "GameFramework/SaveGame.h"
 #include "Kismet/GameplayStatics.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogSaveGameSerializer, Log, All);
+
 ///////////////////////////////////////////////////////////////////////////////////////
 
 FWeekendUtilsSubobjectProxyArchive::FWeekendUtilsSubobjectProxyArchive(FArchive& InInnerArchive, UObject& InSubobjectOwner, bool bInLoadIfFindFails) :
@@ -50,23 +52,35 @@ FArchive& FWeekendUtilsSubobjectProxyArchive::operator<<(UObject*& Obj)
 			{
 				Class = LoadObject<UClass>(nullptr, *ClassPath);
 			}
-			if (Class)
+
+			if (!Class)
 			{
-				Obj = NewObject<UObject>(&SubobjectOwner, Class);
-				FObjectAndNameAsStringProxyArchive SubobjectArchive(InnerArchive, bLoadIfFindFails);
-				Obj->Serialize(SubobjectArchive);
+				// (!) The subobject payload follows in the stream and cannot be consumed without its class.
+				// Reading on would desynchronize the archive, so the whole load is failed instead.
+				UE_LOG(LogSaveGameSerializer, Error, TEXT("FWeekendUtilsSubobjectProxyArchive: cannot resolve subobject class \"%s\" (object \"%s\"). Aborting deserialization."),
+					*ClassPath, *ObjectPath);
+
+				Obj = nullptr;
+				InnerArchive.SetError();
+				return *this;
 			}
+
+			Obj = NewObject<UObject>(&SubobjectOwner, Class);
+			FObjectAndNameAsStringProxyArchive SubobjectArchive(InnerArchive, bLoadIfFindFails);
+			Obj->Serialize(SubobjectArchive);
 		}
 	}
 	else
 	{
+		const bool bIsSubObjectOfOwner = (Obj != nullptr && Obj->IsInOuter(&SubobjectOwner));
+
 		FString ObjectPath(GetPathNameSafe(Obj));
 		FString ClassPath (GetPathNameSafe(Obj ? Obj->GetClass() : nullptr));
-		FString IsSubObjectOfOwner = Obj->IsInOuter(&SubobjectOwner) ? "1" : "0";
+		FString IsSubObjectOfOwner = bIsSubObjectOfOwner ? "1" : "0";
 		InnerArchive << ObjectPath;
 		InnerArchive << ClassPath;
 		InnerArchive << IsSubObjectOfOwner;
-		if (Obj->IsInOuter(&SubobjectOwner))
+		if (bIsSubObjectOfOwner)
 		{
 			FObjectAndNameAsStringProxyArchive SubobjectArchive(InnerArchive, bLoadIfFindFails);
 			Obj->Serialize(SubobjectArchive);
@@ -189,10 +203,22 @@ void USaveGameSerializer::AsyncLoadGameFromSlot(const FSlotName& SlotName, const
 
 bool USaveGameSerializer::TryDeleteGameInSlot(const FSlotName& SlotName, const int32 UserIndex, TOptional<FString> OptionalBackupFolder)
 {
-	if (OptionalBackupFolder.IsSet())
+	// (i) The backup path is assembled by hand, so its segments must not escape the SaveGames directory:
+	auto IsPathSegmentSafe = [](const FString& Segment)
 	{
-		const FString SourceFilePath = FString(FPaths::ProjectSavedDir() / "SaveGames" / SlotName + ".sav");
-		const FString BackupFilePath = FString(FPaths::ProjectSavedDir() / "SaveGames" / *OptionalBackupFolder / SlotName + ".sav");
+		return !Segment.IsEmpty()
+			&& !Segment.Contains(TEXT(".."))
+			&& !Segment.Contains(TEXT("/"))
+			&& !Segment.Contains(TEXT("\\"))
+			&& !Segment.Contains(TEXT(":"))
+			&& FPaths::ValidatePath(Segment);
+	};
+
+	if (OptionalBackupFolder.IsSet() && IsPathSegmentSafe(SlotName) && IsPathSegmentSafe(*OptionalBackupFolder))
+	{
+		const FString SaveGamesDir = FPaths::ProjectSavedDir() / TEXT("SaveGames");
+		const FString SourceFilePath = FString(SaveGamesDir / SlotName + ".sav");
+		const FString BackupFilePath = FString(SaveGamesDir / *OptionalBackupFolder / SlotName + ".sav");
 		if (IFileManager::Get().Move(*BackupFilePath, *SourceFilePath, true))
 			return true;
 	}

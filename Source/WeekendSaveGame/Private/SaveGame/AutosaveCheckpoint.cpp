@@ -88,6 +88,10 @@ void AAutosaveCheckpoint::SetPlayerStartTag(const FName& NewPlayerStartTag)
 void AAutosaveCheckpoint::UpdateCheckpointNameTextRenderer()
 {
 #if WITH_EDITORONLY_DATA
+	// (i) Called from PostInitProperties(), where the subobject can still be missing:
+	if (!CheckpointNameRenderer)
+		return;
+
 	CheckpointNameRenderer->SetText(FText::FromString("-- Checkpoint --\n" + PlayerStartTag.ToString()));
 #endif
 }

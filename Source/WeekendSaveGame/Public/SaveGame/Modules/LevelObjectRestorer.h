@@ -127,6 +127,9 @@ protected:
 
 	virtual void UpgradeSaveGameModule();
 
+	/** @returns every registered object, with and without transform, without allocating an intermediate TSet. */
+	TArray<TWeakObjectPtr<>> GetAllRegisteredObjects() const;
+
 private:
 	/** Debugging option to log which (restored) object states were not claimed on this module. */
 	UPROPERTY(Config)

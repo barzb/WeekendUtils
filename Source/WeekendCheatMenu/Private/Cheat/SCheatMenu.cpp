@@ -35,9 +35,10 @@ DEFINE_CHEAT_COLLECTION(CheatMenuCheats)
 	DEFINE_CHEAT_EXECUTE(OpenCheatMenuCheat)
 	{
 		static TSharedPtr<SWindow> SlateWindow = nullptr;
+		static bool bHasRegisteredShutdownHandler = false;
 
 		// Window already open somewhere:
-		if (SlateWindow.IsValid() && SlateWindow->IsActive())
+		if (SlateWindow.IsValid())
 		{
 			SlateWindow->BringToFront();
 			return;
@@ -62,18 +63,31 @@ DEFINE_CHEAT_COLLECTION(CheatMenuCheats)
 		.UseOSWindowBorder(false);
 		SlateWindow->SetContent(SNew(SCheatMenu));
 
+		SlateWindow->SetOnWindowClosed(FOnWindowClosed::CreateLambda([](const TSharedRef<SWindow>&)
+		{
+			SlateWindow.Reset();
+		}));
+
 		// Open the window:
 		FSlateApplication& SlateApp = FSlateApplication::Get();
 		SlateApp.AddWindow(SlateWindow.ToSharedRef());
-		SlateApp.GetRenderer()->CreateViewport(SlateWindow.ToSharedRef());
-		SlateApp.OnPreShutdown().AddLambda([]
+		if (FSlateRenderer* Renderer = SlateApp.GetRenderer())
 		{
-			if (SlateWindow.IsValid())
+			Renderer->CreateViewport(SlateWindow.ToSharedRef());
+		}
+
+		if (!bHasRegisteredShutdownHandler)
+		{
+			bHasRegisteredShutdownHandler = true;
+			SlateApp.OnPreShutdown().AddLambda([]
 			{
-				FSlateApplication::Get().RequestDestroyWindow(SlateWindow.ToSharedRef());
-				SlateWindow.Reset();
-			}
-		});
+				if (SlateWindow.IsValid())
+				{
+					FSlateApplication::Get().RequestDestroyWindow(SlateWindow.ToSharedRef());
+					SlateWindow.Reset();
+				}
+			});
+		}
 	}
 }
 
@@ -89,7 +103,8 @@ namespace
 	const FName FILTER_RESULT_TAB_NAME = FName("Filtered");
 	const FName DEFAULT_TAB_NAME = FAVORITE_TAB_NAME;
 
-	const FString CHEAT_MENU_INI_FILE = GGameUserSettingsIni;
+	const FString& GetCheatMenuIniFile() { return GGameUserSettingsIni; }
+
 	const TCHAR* CHEAT_MENU_INI_SECTION = TEXT("WeekendUtils.CheatMenu");
 	const TCHAR* CHEAT_MENU_INI_FAVORITES = TEXT("FavoritedCheats");
 	const TCHAR* CHEAT_MENU_INI_RECENTLY_USED = TEXT("RecentlyUsedCheats");
@@ -98,18 +113,15 @@ namespace
 
 	FSlateFontInfo GetDefaultCheatMenuTextFont() { return FCoreStyle::GetDefaultFontStyle("Regular", 8); }
 
-	/**
-	 * Combobox widgets tend to lose focus when they open, which can lead to them closing again when moving the cursor.
-	 * To counter that, their OnComboBoxOpening method will reset the focus to the combobox button, and for that we need
-	 * to cache the pointers to the combobox (indexed by a unique ID).
-	 */
-	TMap<FGuid, TWeakPtr<SComboBox<TSharedPtr<FString>>>> CheatMenuComboBoxPointers;
-
 	struct FSortMenuEntryPredicate
 	{
+		/** @remark Must be a strict weak ordering, so unnamed entries are never considered less than themselves. */
 		FORCEINLINE bool operator()(const FName& A, const FName& B) const
 		{
-			return (A.IsNone() || A.Compare(B) < 0);
+			if (A.IsNone() || B.IsNone())
+				return (A.IsNone() && !B.IsNone());
+
+			return (A.Compare(B) < 0);
 		}
 	};
 
@@ -303,7 +315,7 @@ SCheatMenu::FEntry::FEntry(ICheatMenuAction* InCheatMenuAction, const FCheatMenu
 	if (GConfig != nullptr)
 	{
 		//FString ArgValuesFromCfg;
-		GConfig->GetSingleLineArray(CHEAT_MENU_INI_SECTION, *GetCommandName(), OUT ArgValues, CHEAT_MENU_INI_FILE);
+		GConfig->GetSingleLineArray(CHEAT_MENU_INI_SECTION, *GetCommandName(), OUT ArgValues, GetCheatMenuIniFile());
 		//ArgValuesFromCfg.ParseIntoArray(OUT ArgValues, TEXT(","));
 	}
 
@@ -329,7 +341,7 @@ SCheatMenu::~SCheatMenu()
 	TabList.Reset();
 	SectionList.Reset();
 	ErrorText.Reset();
-	CheatMenuComboBoxPointers.Reset();
+	ComboBoxPointers.Reset();
 }
 
 bool SCheatMenu::SupportsKeyboardFocus() const
@@ -362,8 +374,8 @@ void SCheatMenu::FEntry::ExecuteCheatMenuAction()
 	// Save the args to the config ini, so they can be restored the next time the cheat menu opens:
 	if (GConfig != nullptr)
 	{
-		GConfig->SetSingleLineArray(CHEAT_MENU_INI_SECTION, *GetCommandName(), GetArgs(), CHEAT_MENU_INI_FILE);
-		GConfig->Flush(false, CHEAT_MENU_INI_FILE);
+		GConfig->SetSingleLineArray(CHEAT_MENU_INI_SECTION, *GetCommandName(), GetArgs(), GetCheatMenuIniFile());
+		GConfig->Flush(false, GetCheatMenuIniFile());
 	}
 }
 
@@ -479,7 +491,7 @@ void SCheatMenu::PopulateTabList()
 
 void SCheatMenu::RefreshTabContent()
 {
-	CheatMenuComboBoxPointers.Reset();
+	ComboBoxPointers.Reset();
 	SectionList->ClearChildren();
 	if (!CurrentTabName.IsValid())
 		return;
@@ -772,17 +784,17 @@ TSharedRef<SWidget> SCheatMenu::ConstructArgumentInput(const ICheatMenuAction::F
 			}
 
 			const FGuid ComboboxId = FGuid::NewGuid();
-			return SAssignNew(CheatMenuComboBoxPointers.Add(ComboboxId), SComboBox<TSharedPtr<FString>>)
+			return SAssignNew(ComboBoxPointers.Add(ComboboxId), SComboBox<TSharedPtr<FString>>)
 			.IsFocusable(true)
 			.EnableGamepadNavigationMode(true)
 			.CollapseMenuOnParentFocus(false)
 			.ToolTipText(FText::FromString(ArgumentInfo.Description))
 			.OptionsSource(ArgumentInfo.OptionsSource.GetOptions(FindPlayWorld()))
 			.Method(EPopupMethod::UseCurrentWindow)
-			.OnComboBoxOpening_Lambda([ComboboxId]()
+			.OnComboBoxOpening_Lambda([this, ComboboxId]()
 			{
 				// Reset UI focus to the combobox button to avoid that the dropdown menu closes again after moving the mouse (engine bug):
-				TWeakPtr<SComboBox<TSharedPtr<FString>>>* ComboBox = CheatMenuComboBoxPointers.Find(ComboboxId);
+				TWeakPtr<SComboBox<TSharedPtr<FString>>>* ComboBox = ComboBoxPointers.Find(ComboboxId);
 				if (ComboBox && ComboBox->IsValid())
 				{
 					ComboBox->Pin()->RefreshOptions();
@@ -924,9 +936,9 @@ void SCheatMenu::SaveFavoriteAndRecentlyUsedCheats() const
 {
 	if (GConfig != nullptr)
 	{
-		GConfig->SetArray(CHEAT_MENU_INI_SECTION, CHEAT_MENU_INI_FAVORITES, FavoriteCheatMenuActions, CHEAT_MENU_INI_FILE);
-		GConfig->SetArray(CHEAT_MENU_INI_SECTION, CHEAT_MENU_INI_RECENTLY_USED, RecentlyUsedCheatMenuActions, CHEAT_MENU_INI_FILE);
-		GConfig->Flush(false, CHEAT_MENU_INI_FILE);
+		GConfig->SetArray(CHEAT_MENU_INI_SECTION, CHEAT_MENU_INI_FAVORITES, FavoriteCheatMenuActions, GetCheatMenuIniFile());
+		GConfig->SetArray(CHEAT_MENU_INI_SECTION, CHEAT_MENU_INI_RECENTLY_USED, RecentlyUsedCheatMenuActions, GetCheatMenuIniFile());
+		GConfig->Flush(false, GetCheatMenuIniFile());
 	}
 }
 
@@ -934,7 +946,7 @@ void SCheatMenu::RestoreFavoriteAndRecentlyUsedCheats()
 {
 	if (GConfig != nullptr)
 	{
-		GConfig->GetArray(CHEAT_MENU_INI_SECTION, CHEAT_MENU_INI_FAVORITES, OUT FavoriteCheatMenuActions, CHEAT_MENU_INI_FILE);
-		GConfig->GetArray(CHEAT_MENU_INI_SECTION, CHEAT_MENU_INI_RECENTLY_USED, OUT RecentlyUsedCheatMenuActions, CHEAT_MENU_INI_FILE);
+		GConfig->GetArray(CHEAT_MENU_INI_SECTION, CHEAT_MENU_INI_FAVORITES, OUT FavoriteCheatMenuActions, GetCheatMenuIniFile());
+		GConfig->GetArray(CHEAT_MENU_INI_SECTION, CHEAT_MENU_INI_RECENTLY_USED, OUT RecentlyUsedCheatMenuActions, GetCheatMenuIniFile());
 	}
 }

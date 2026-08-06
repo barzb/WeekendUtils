@@ -62,7 +62,17 @@ void UAsyncGameServiceBase::ShutdownService()
 {
 	StopWaitingForDependencies();
 
-	const bool bIsWorldTearingDown = (!IsValid(GetWorld()) && GetWorld()->bIsTearingDown);
+	UWorld* World = GetWorld();
+	if (WaitForWorldDelegateHandle.IsValid())
+	{
+		if (IsValid(World))
+		{
+			World->OnWorldBeginPlay.Remove(WaitForWorldDelegateHandle);
+		}
+		WaitForWorldDelegateHandle.Reset();
+	}
+
+	const bool bIsWorldTearingDown = (!IsValid(World) || World->bIsTearingDown);
 	if (!bIsWorldTearingDown)
 	{
 		AddToRoot(); // Make sure service is not garbage collected while shutting down.

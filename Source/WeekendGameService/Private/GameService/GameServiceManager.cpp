@@ -241,6 +241,7 @@ UGameServiceBase& UGameServiceManager::StartService(UWorld& TargetWorld, const F
 
 		case EGameServiceLifetime::ShutdownWithGameInstance:
 			ServiceOwner = TargetWorld.GetGameInstance();
+			checkf(ServiceOwner, TEXT("StartService<%s> as ShutdownWithGameInstance: world has no GameInstance."), *GetNameSafe(InstanceClass))
 			break;
 	}
 
@@ -399,7 +400,13 @@ void UGameServiceManager::ShutdownAllServices()
 	while (StartOrderedServices.Num() > 0)
 	{
 		TStrongObjectPtr<UGameServiceBase> ServiceToShutdown;
-		StartedServices.RemoveAndCopyValue(StartOrderedServices.Pop(), OUT ServiceToShutdown);
+		const FGameServiceClass ServiceClass = StartOrderedServices.Pop();
+		if (!StartedServices.RemoveAndCopyValue(ServiceClass, OUT ServiceToShutdown) || !ServiceToShutdown.IsValid())
+		{
+			// Can happen when an aliased instance was already removed by a previous iteration:
+			UE_LOG(LogGameService, Verbose, TEXT("Skipping shutdown of [%s]: no started instance found."), *GetNameSafe(ServiceClass));
+			continue;
+		}
 
 		UE_LOG(LogGameService, Log, TEXT("#%3d | Shutdown game service: %s"), StartOrderedServices.Num(), *GetNameSafe(ServiceToShutdown.Get()));
 		ServiceToShutdown->ShutdownService();
@@ -414,16 +421,25 @@ void UGameServiceManager::ShutdownAllServicesWithLifetime(const EGameServiceLife
 {
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("UGameServiceManager.ShutdownAllServicesWithLifetime"), STAT_GameServiceManager_ShutdownAllServicesWithLifetime, STATGROUP_GameService);
 
-	// Shutdown the services in the reverse order of how they were started:
-	for (int32 i = 0; i < StartOrderedServices.Num(); ++i)
+	// Shutdown the services in the reverse order of how they were started, so a service is never
+	// torn down before its dependents (dependencies have a lower start index):
+	for (int32 i = StartOrderedServices.Num() - 1; i >= 0; --i)
 	{
 		// Copy entry so we can remove it from the list early:
 		const FGameServiceClass ServiceClass = StartOrderedServices[i];
-		if (StartedServices[ServiceClass]->GetLifetime() != Lifetime)
+		const TStrongObjectPtr<UGameServiceBase>* StartedService = StartedServices.Find(ServiceClass);
+		if (!StartedService || !StartedService->IsValid())
+		{
+			// Instance already removed as an alias of an earlier iteration:
+			StartOrderedServices.RemoveAt(i);
+			continue;
+		}
+
+		if ((*StartedService)->GetLifetime() != Lifetime)
 			continue;
 
-		StartOrderedServices.RemoveAt(i--);
-		TStrongObjectPtr<UGameServiceBase> ServiceToShutdown = StartedServices[ServiceClass];
+		TStrongObjectPtr<UGameServiceBase> ServiceToShutdown = *StartedService;
+		StartOrderedServices.RemoveAt(i);
 		while (const FGameServiceClass* RegisteredServiceClass = StartedServices.FindKey(ServiceToShutdown))
 		{
 			// Remove all classes & aliases associated with the instance: 

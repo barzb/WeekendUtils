@@ -38,10 +38,9 @@ USaveGame* USaveGameFilePreset::CreateSaveGameObject(USaveGameService& SaveGameS
 		return nullptr;
 	}
 
-	UModularSaveGame* ModularSaveGame = Cast<UModularSaveGame>(NewSaveGame);
-	if (const FSimpleSaveGameHeaderData* SimpleHeaderData = HeaderData.GetPtr<FSimpleSaveGameHeaderData>(); IsValid(ModularSaveGame) && SimpleHeaderData)
+	if (UModularSaveGame* ModularSaveGame = Cast<UModularSaveGame>(NewSaveGame); IsValid(ModularSaveGame))
 	{
-		ModularSaveGame->CreateHeaderData(*SimpleHeaderData);
+		ModularSaveGame->SetInstancedHeaderData(CopyTemp(HeaderData));
 	}
 
 	return NewSaveGame;

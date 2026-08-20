@@ -31,6 +31,7 @@ USaveGame* USaveGameObjectPreset::CreateSaveGameObject(USaveGameService& SaveGam
 	check(SaveGame);
 	const FName SaveGameObjectName = MakeUniqueObjectName(&SaveGameService, SaveGame->GetClass(), FName("Preset"));
 	USaveGame* DuplicatedSaveGame = DuplicateObject<USaveGame>(SaveGame, &SaveGameService, SaveGameObjectName);
+	DuplicatedSaveGame->ClearFlags(RF_ClassDefaultObject | RF_ArchetypeObject | RF_DefaultSubObject); // Clear CDO flags from duplication.
 
 	UModularSaveGame* ModularSaveGame = Cast<UModularSaveGame>(DuplicatedSaveGame);
 	if (const FSimpleSaveGameHeaderData* SimpleHeaderData = HeaderData.GetPtr<FSimpleSaveGameHeaderData>(); ModularSaveGame && SimpleHeaderData)

@@ -46,15 +46,24 @@ public:
 
 	/**
 	 * Called after the current SaveGame was loaded. This is not fired if the service is not yet running.
-	 * The initial restoration is being forwarded to @StartRestorableService instead.
+	 * See @bCanRestoreMultipleSaveGames for more information.
 	 */
 	virtual void RestoreFromSaveGame(const FCurrentSaveGame& SaveGame) {}
 
 protected:
-	TWeakObjectPtr<USaveGameService> SaveGameService = nullptr;
+	/**
+	 * When enabled, the service will call RestoreFromSaveGame() for restored SaveGames even after the service has already been started.
+	 * Set to enabled when your game supports this feature. Otherwise, leave disabled, or RestoreAndTravel called while a world is already playing will cause
+	 * the service to react to the SaveGame data of the next world, which can enable this service to taint data it is not responsible for.
+	 */
+	bool bCanRestoreMultipleSaveGames = false;
+
+	/** @returns the cached SaveGameService pointer. Only valid after this service has been started. */
+	USaveGameService& GetSaveGameService() const;
 
 private:
 	bool bIsWaitingForSaveGameRestore = false;
+	TWeakObjectPtr<USaveGameService> SaveGameService = nullptr;
 
 	void HandleSaveGameLoaded(const FCurrentSaveGame& SaveGame);
 };

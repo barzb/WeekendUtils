@@ -12,11 +12,9 @@
 #include "SaveGame/AutosaveCheckpointRegistry.h"
 
 #if WITH_EDITOR
-#include "Editor.h"
-#include "Editor/EditorEngine.h"
-#include "Engine/Engine.h"
+#include "Logging/MessageLog.h"
 #include "Misc/DataValidation.h"
-#include "Misc/MessageDialog.h"
+#include "Misc/UObjectToken.h"
 #endif
 
 UAutosaveCheckpointComponent::UAutosaveCheckpointComponent()
@@ -27,7 +25,16 @@ UAutosaveCheckpointComponent::UAutosaveCheckpointComponent()
 
 void UAutosaveCheckpointComponent::RequestAutosaveAtCheckpoint()
 {
-	if (LinkedCheckpoint)
+	if (!LinkedCheckpoint.IsValid())
+	{
+		const AAutosaveCheckpointRegistry* CheckpointRegistry = AAutosaveCheckpointRegistry::TrySummon(GetWorld());
+		if (AAutosaveCheckpoint* Checkpoint = CheckpointRegistry ? CheckpointRegistry->GetRegisteredCheckpoint(*GetReadableName()) : nullptr)
+		{
+			LinkedCheckpoint = Checkpoint;
+		}
+	}
+
+	if (LinkedCheckpoint.IsValid())
 	{
 		LinkedCheckpoint->RequestAutosaveHere();
 	}
@@ -42,247 +49,58 @@ AAutosaveCheckpoint* UAutosaveCheckpointComponent::GetAutosaveCheckpoint() const
 	return LinkedCheckpoint.Get();
 }
 
-void UAutosaveCheckpointComponent::OnRegister()
-{
-	Super::OnRegister();
-
-	// OnRegister is also called on CDO's and all kinds of temporary objects, but we don't care about them:
-	if (IsTemplate() || GetWorld()->IsPreviewWorld())
-		return;
-
 #if WITH_EDITOR
-	if (GEngine)
-	{
-		GEngine->OnActorMoved().AddUObject(this, &ThisClass::HandleEditorActorMoved);
-		GEngine->OnLevelActorDeleted().AddUObject(this, &ThisClass::HandleLevelActorDeleted);
-		FCoreDelegates::OnActorLabelChanged.AddUObject(this, &ThisClass::HandleActorLabelChanged);
-	}
-
-	// (i) Re-instanced actors are not "done" constructing, yet. Their properties have not yet been copied from the original actor.
-	// This can lead to spawning a duplicate checkpoint with a default name. OnRegister is called again once the process is complete.
-	// (i) Transient actors should also skip the creation of checkpoints. Preview actors about to be placed in the editor viewport
-	// are usually transient. They are replaced by a proper actor after placement has completed, and OnRegister is called again.
-	if (!LinkedCheckpoint && !GIsReinstancing && !GetOwner()->HasAnyFlags(RF_Transient))
-#else
-	if (!LinkedCheckpoint)
-#endif
-	{
-		FindOrCreateCheckpoint();
-	}
-}
-
-void UAutosaveCheckpointComponent::OnUnregister()
+void UAutosaveCheckpointComponent::CheckForErrors()
 {
-#if WITH_EDITOR
-	if (GEngine)
+	Super::CheckForErrors();
+
+	if (!LinkedCheckpoint.IsValid())
 	{
-		GEngine->OnActorMoved().RemoveAll(this);
-		GEngine->OnLevelActorDeleted().RemoveAll(this);
-		FCoreDelegates::OnActorLabelChanged.RemoveAll(this);
+		FMessageLog("MapCheck").Error()
+			->AddToken(FUObjectToken::Create(this))
+			->AddText(INVTEXT("LinkedAutosaveCheckpoint is invalid, but must be linked to a valid AutosaveCheckpoint actor."))
+			->AddToken(FActionToken::Create(FText::FromString("Attempt fix"), FText(),
+				FOnActionTokenExecuted::CreateWeakLambda(this, [this]()
+				{
+					AAutosaveCheckpointRegistry* CheckpointRegistry = AAutosaveCheckpointRegistry::TrySummon(GetWorld());
+					if (!IsValid(CheckpointRegistry))
+						return;
+
+					if (AAutosaveCheckpoint* FoundCheckpoint = CheckpointRegistry->GetRegisteredCheckpoint(*GetReadableName()))
+					{
+						LinkedCheckpoint = FoundCheckpoint;
+						Modify();
+
+						FMessageLog("AssetCheck").Info()
+							->AddToken(FUObjectToken::Create(this))
+							->AddText(FText::FromString("was linked to"))
+							->AddToken(FUObjectToken::Create(FoundCheckpoint));
+					}
+					else
+					{
+						FMessageLog("AssetCheck").Error()
+							->AddToken(FUObjectToken::Create(this))
+							->AddText(FText::FromString("attempted to find AutosaveCheckpoint for \"" + GetReadableName() + "\" was NOT successful."))
+							->AddText(FText::FromString("Please manually link a checkpoint to the component."));
+					}
+				}), true));
 	}
-#endif
-
-	Super::OnUnregister();
-}
-
-#if WITH_EDITOR
-void UAutosaveCheckpointComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
-{
-	// Checkpoint class changed -> Respawn checkpoint:
-	if (PropertyChangedEvent.GetMemberPropertyName() == GET_MEMBER_NAME_CHECKED(ThisClass, CheckpointClass) &&
-		LinkedCheckpoint && LinkedCheckpoint->GetClass() != CheckpointClass)
-	{
-		RespawnCheckpoint();
-	}
-
-	// A checkpoint is linked, but it's not very valid, so let's respawn it:
-	if (PropertyChangedEvent.GetMemberPropertyName() == GET_MEMBER_NAME_CHECKED(ThisClass, LinkedCheckpoint) &&
-		!LinkedCheckpoint.IsNull() && !LinkedCheckpoint.IsValid())
-	{
-		RespawnCheckpoint();
-	}
-
-	// Checkpoint should be attached to us, but isn't:
-	if (LinkedCheckpoint && !LinkedCheckpoint->IsAttachedTo(GetOwner()) && !GetOwner()->GetIsSpatiallyLoaded())
-	{
-		LinkedCheckpoint->AttachToComponent(this, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-	}
-
-	// PlayerStart tag is not up to date:
-	if (LinkedCheckpoint && LinkedCheckpoint->PlayerStartTag != *GetReadableName())
-	{
-		RenameCheckpoint();
-	}
-
-	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 
 EDataValidationResult UAutosaveCheckpointComponent::IsDataValid(FDataValidationContext& Context) const
 {
-	EDataValidationResult Result = Super::IsDataValid(Context);
-
-	if (!IsValid(CheckpointClass))
+	EDataValidationResult Result{Super::IsDataValid(Context)};
+	if (!IsTemplate())
 	{
-		Context.AddError(FText::Format(INVTEXT("{0} has invalid CheckpointClass: {1}"), FText::FromString(GetReadableName()), FText::FromString(GetNameSafe(CheckpointClass))));
-		Result = CombineDataValidationResults(Result, EDataValidationResult::Invalid);
+		if (!LinkedCheckpoint)
+		{
+			Result = CombineDataValidationResults(Result, EDataValidationResult::Invalid);
+			Context.AddMessage(EMessageSeverity::Error)
+				->AddToken(FUObjectToken::Create(GetOwner()))
+				->AddToken(FUObjectToken::Create(this))
+				->AddText(INVTEXT("LinkedAutosaveCheckpoint is invalid, but must be linked to a valid AutosaveCheckpoint actor"));
+		}
 	}
-
-	if (!IsTemplate() && GetWorld() && !GetWorld()->IsPreviewWorld() && !LinkedCheckpoint)
-	{
-		Context.AddError(FText::Format(INVTEXT("{0} does not link to any AutosaveCheckpoint actor. Was it deleted?"), FText::FromString(GetReadableName())));
-		Result = CombineDataValidationResults(Result, EDataValidationResult::Invalid);
-	}
-
 	return Result;
-}
-#endif
-
-void UAutosaveCheckpointComponent::FindOrCreateCheckpoint()
-{
-	UAutosaveCheckpointRegistry* CheckpointRegistry = UAutosaveCheckpointRegistry::Get(this);
-	if (!CheckpointRegistry)
-		return;
-
-	LinkedCheckpoint = CheckpointRegistry->FindCheckpoint(*GetReadableName());
-
-#if WITH_EDITOR
-	// Checkpoint link is broken, but the actor might still be attached to our own actor:
-	if (!LinkedCheckpoint && !GetOwner()->GetIsSpatiallyLoaded())
-	{
-		GetOwner()->ForEachAttachedActors([this](AActor* AttachedActor) -> bool
-		{
-			if (AAutosaveCheckpoint* AttachedCheckpoint = Cast<AAutosaveCheckpoint>(AttachedActor))
-			{
-				LinkedCheckpoint = AttachedCheckpoint;
-			}
-
-			return !LinkedCheckpoint; // true = continue; false = break;
-		});
-	}
-
-	// Spawn a new checkpoint in case we did not find the one that belongs to us:
-	if (!LinkedCheckpoint)
-	{
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		LinkedCheckpoint = GetWorld()->SpawnActor<AAutosaveCheckpoint>(CheckpointClass, SpawnParams);
-		if (LinkedCheckpoint)
-		{
-			CheckpointRegistry->RegisterCheckpoint(*LinkedCheckpoint);
-		}
-	}
-
-	// Make sure the checkpoint is correctly attached to us:
-	if (LinkedCheckpoint)
-	{
-		LinkedCheckpoint->SetActorLocationAndRotation(GetComponentLocation(), GetComponentRotation());
-		if (GetOwner()->GetIsSpatiallyLoaded())
-		{
-			LinkedCheckpoint->SetFolderPath("AutosaveCheckpoints");
-		}
-		else
-		{
-			LinkedCheckpoint->GetRootComponent()->Mobility = Mobility;
-			LinkedCheckpoint->AttachToComponent(this, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-		}
-		RenameCheckpoint();
-	}
-#endif
-}
-
-#if WITH_EDITOR
-void UAutosaveCheckpointComponent::DespawnCheckpoint()
-{
-	if (!LinkedCheckpoint)
-		return;
-
-	if (UAutosaveCheckpointRegistry* CheckpointRegistry = UAutosaveCheckpointRegistry::Get(this))
-	{
-		CheckpointRegistry->UnregisterCheckpoint(*LinkedCheckpoint);
-	}
-
-	LinkedCheckpoint->Destroy();
-	LinkedCheckpoint = nullptr;
-}
-
-void UAutosaveCheckpointComponent::RespawnCheckpoint()
-{
-	if (IsTemplate())
-		return;
-
-	DespawnCheckpoint();
-	FindOrCreateCheckpoint();
-}
-
-void UAutosaveCheckpointComponent::RenameCheckpoint()
-{
-	if (LinkedCheckpoint)
-	{
-		LinkedCheckpoint->SetPlayerStartTag(*GetReadableName());
-		FActorLabelUtilities::RenameExistingActor(
-			LinkedCheckpoint.Get(), MakeUniqueObjectName(GetWorld(), CheckpointClass, *(GetOwner()->GetActorLabel() + "_Checkpoint")).ToString()); 
-	}
-}
-
-void UAutosaveCheckpointComponent::HandleEditorActorMoved(AActor* MovedActor)
-{
-	if (!LinkedCheckpoint || MovedActor->GetActorTransform().Equals(GetComponentTransform()))
-		return;
-
-	// You moved the Checkpoint, but not the component it's attached to, so we'll casually correct that for you:
-	if (MovedActor == LinkedCheckpoint.Get())
-	{
-		SetWorldLocationAndRotation(LinkedCheckpoint->GetActorLocation(), LinkedCheckpoint->GetActorRotation());
-		if (LinkedCheckpoint->IsAttachedTo(GetOwner()))
-		{
-			LinkedCheckpoint->AttachToComponent(this, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-			LinkedCheckpoint->SetActorRelativeTransform(FTransform::Identity);
-			GetOwner()->Modify(); // Mark owning actor as dirty, so it shows up as change to be saved.
-		}
-	}
-
-	// You moved the actor of this component, but not the checkpoint, so we'll casually correct that for you: 
-	if (MovedActor == GetOwner())
-	{
-		LinkedCheckpoint->SetActorLocationAndRotation(GetComponentLocation(), GetComponentRotation());
-	}
-}
-
-void UAutosaveCheckpointComponent::HandleLevelActorDeleted(AActor* DeletedActor)
-{
-	// Ignore the deletion of other actors:
-	if (DeletedActor != GetOwner())
-		return;
-
-	// Ignore this happening to deletions that weren't directly caused by the user (i.e. implicit re-instancing from changes to the BP):
-	if (!LinkedCheckpoint || IsTemplate() || GIsReinstancing ||
-		GetOwner()->bIsEditorPreviewActor ||
-		GetOwner()->GetClass()->GetName().StartsWith(TEXT("SKEL_")) ||
-		GetOwner()->GetClass()->GetName().StartsWith(TEXT("REINST_")) ||
-		GetOwner()->HasAnyFlags(RF_NewerVersionExists) ||
-		GetOwner()->GetClass()->HasAnyClassFlags(CLASS_NewerVersionExists))
-		return;
-
-	// Prompt the user to also delete the linked checkpoint:
-	if (FMessageDialog::Open(EAppMsgCategory::Warning, EAppMsgType::YesNo,
-		INVTEXT("You are deleting an actor that is linked to an Autosave Checkpoint.\nDo you also wish to delete the linked checkpoint?"),
-		INVTEXT("Delete Autosave Checkpoint?")) == EAppReturnType::Yes)
-	{
-		DespawnCheckpoint();
-	}
-}
-
-void UAutosaveCheckpointComponent::HandleActorLabelChanged(AActor* RenamedActor)
-{
-	if (RenamedActor != GetOwner())
-		return;
-
-	// You might think we should just call RenameCheckpoint() here, but that would be too easy.
-	// The actor label would not refresh in the scene outliner for reasons only known by gods,
-	// so instead... we respawn the checkpoint with the correct name.
-	if (LinkedCheckpoint.IsValid())
-	{
-		RespawnCheckpoint();
-	}
 }
 #endif

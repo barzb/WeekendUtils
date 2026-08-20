@@ -37,6 +37,11 @@
 			"LoadingPhase": "Default"
 		},
 		{
+			"Name": "WeekendSaveGameEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		},
+		{
 			"Name": "WeekendUtilsTests",
 			"Type": "UncookedOnly",
 			"LoadingPhase": "Default"

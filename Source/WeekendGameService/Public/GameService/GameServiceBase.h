@@ -11,6 +11,7 @@
 
 #include "CoreMinimal.h"
 #include "GameService/GameServiceUser.h"
+#include "Templates/SubclassOf.h"
 #include "UObject/Object.h"
 #include "Utils/EnumUtils.h"
 
@@ -35,7 +36,7 @@ DEFINE_ENUM_STRING_CONVERTERS(GameServiceLifetime, EGameServiceLifetime);
  * Each derived service class also gains access to the inherited GameServiceUser API to configure
  * and access dependencies to other services or subsystems.
  */
-UCLASS(Abstract, EditInlineNew)
+UCLASS(Abstract, EditInlineNew, CollapseCategories)
 class WEEKENDGAMESERVICE_API UGameServiceBase : public UObject, public FGameServiceUser
 {
 	GENERATED_BODY()
@@ -94,13 +95,13 @@ inline void UGameServiceBase::CheckGameServiceDependencies() const
 		return; // World services can have dependencies to anything since they die first.
 	for (const TSubclassOf<UObject>& DependencyClass : ConfigureGameServiceUser().ServiceDependencies)
 	{
-		const UGameServiceBase* ServiceDependency = DependencyClass->GetDefaultObject<UGameServiceBase>();
+		const UGameServiceBase* ServiceDependency = GetDefault<UGameServiceBase>(DependencyClass.Get());
 		if (!ServiceDependency)
 			continue;
 
 		checkf(ServiceDependency->Lifetime != EGameServiceLifetime::ShutdownWithWorld,
 			TEXT("%s is configured as %s and can thus not depend on world service %s"),
-			*GetNameSafe(this), *LexToString(ServiceDependency->Lifetime), *GetNameSafe(DependencyClass));
+			*GetNameSafe(this), *LexToString(ServiceDependency->Lifetime), *GetNameSafe(DependencyClass.Get()));
 	}
 }
 

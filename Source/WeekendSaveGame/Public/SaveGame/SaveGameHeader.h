@@ -44,23 +44,23 @@ struct WEEKENDSAVEGAME_API FSimpleSaveGameHeaderData : public FSaveGameHeaderDat
 
 public:
 	/** How often the SaveGame was saved. */
-	UPROPERTY(SaveGame, EditAnywhere, Category = "Weekend Utils|Save Game")
+	UPROPERTY(SaveGame, EditAnywhere, Category = "SaveGame")
 	int32 SaveCounter = 0;
 
 	/** How often the SaveGame was restored. */
-	UPROPERTY(SaveGame, EditAnywhere, Category = "Weekend Utils|Save Game")
+	UPROPERTY(SaveGame, EditAnywhere, Category = "SaveGame")
 	int32 RestoreCounter = 0;
 
 	/** The UTC timestamp of when the SaveGame was last saved. */
-	UPROPERTY(SaveGame, EditAnywhere, Category = "Weekend Utils|Save Game")
+	UPROPERTY(SaveGame, EditAnywhere, Category = "SaveGame")
 	FDateTime UtcTimeOfLastSave = FDateTime();
 
 	/** The UTC timestamp of when the SaveGame was last restored. */
-	UPROPERTY(SaveGame, EditAnywhere, Category = "Weekend Utils|Save Game")
+	UPROPERTY(SaveGame, EditAnywhere, Category = "SaveGame")
 	FDateTime UtcTimeOfLastRestore = FDateTime();
 
 	/** The level which was loaded when the SaveGame was last saved. */
-	UPROPERTY(SaveGame, EditAnywhere, Category = "Weekend Utils|Save Game", meta = (DisplayThumbnail = "false"))
+	UPROPERTY(SaveGame, EditAnywhere, Category = "SaveGame", meta = (DisplayThumbnail = "false"))
 	FSoftObjectPath LoadedLevel = FSoftObjectPath();
 
 	FORCEINLINE bool WasEverSaved() const { return (SaveCounter > 0); }

@@ -14,7 +14,7 @@
 void USaveGameSlotViewModel::BindToModel(const FSlotName& SlotName, USaveGameService& SaveGameService, bool bCanSave, bool bCanLoad)
 {
 	BoundSlotName = SlotName;
-	if (const USaveGame* SaveGame = SaveGameService.GetCachedSaveGameSnapshotAtSlot(SlotName))
+	if (const USaveGame* SaveGame = FindSaveGameForSlot(SaveGameService, SlotName))
 	{
 		UE_MVVM_SET_PROPERTY_VALUE(bIsEmptySlot, false);
 		BindToSaveGame(SlotName, *SaveGame);
@@ -29,6 +29,11 @@ void USaveGameSlotViewModel::BindToModel(const FSlotName& SlotName, USaveGameSer
 	UE_MVVM_SET_PROPERTY_VALUE(bIsCurrentSaveGame, (CurrentSlotName == SlotName));
 	UE_MVVM_SET_PROPERTY_VALUE(bCanBeSavedFromWidget, bCanSave);
 	UE_MVVM_SET_PROPERTY_VALUE(bCanBeLoadedFromWidget, bCanLoad);
+}
+
+const USaveGame* USaveGameSlotViewModel::FindSaveGameForSlot(USaveGameService& SaveGameService, const FSlotName& SlotName) const
+{
+	return SaveGameService.GetCachedSaveGameSnapshotAtSlot(SlotName);
 }
 
 bool USaveGameSlotViewModel::TryLoadGameFromSlot()

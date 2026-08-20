@@ -7,6 +7,8 @@
 ///
 ///////////////////////////////////////////////////////////////////////////////////////
 
+#include "Misc/Build.h"
+
 #if WITH_AUTOMATION_WORKER
 
 #include "AutomationTest/AutomationSpecMacros.h"
@@ -30,6 +32,13 @@ WE_END_DEFINE_SPEC(GameServiceManager)
 		TestWorld = MakeShared<FScopedAutomationTestWorld>(SpecTestWorldName);
 		TestWorld->InitializeGame();
 		ServiceManager = UGameServiceManager::FindInstance(TestWorld->AsPtr());
+		{
+			const TArray<FGameServiceClass> RegisteredServiceClasses = ServiceManager->GetAllRegisteredServiceClasses();
+			ensureMsgf(RegisteredServiceClasses.IsEmpty(), TEXT("Expected an empty service register for a fresh world without any GameServiceConfig!"));
+			// If the ensure above triggers, then your project is likely creating on-demand services in EVERY world (GameInstance / AssetRegistry / ...).
+			// While this works, it's not good practice. Consider using FindOptionalGameService() instead for those instances and configure your services only
+			// for worlds that really need them!
+		}
 	});
 
 	AfterEach([this]

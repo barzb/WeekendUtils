@@ -12,14 +12,16 @@
 #include "CoreMinimal.h"
 #include "GameService/GameServiceBase.h"
 #include "GameService/GameServiceUtils.h"
+#include "Templates/SubclassOf.h"
 #include "UObject/Object.h"
+#include "UObject/SoftObjectPtr.h"
 
 #include "GameServiceConfig.generated.h"
 
 /**
  * Configuration container for the @UGameServiceManager.
  */
-UCLASS(CollapseCategories, NotBlueprintable)
+UCLASS(NotBlueprintable)
 class WEEKENDGAMESERVICE_API UGameServiceConfig : public UObject
 {
 	GENERATED_BODY()
@@ -57,6 +59,28 @@ public:
 	 * });
 	 */
 	static UGameServiceConfig& CreateForNextWorld(TFunction<void(UGameServiceConfig&)> ConfigExec);
+
+	/**
+	 * Creates a UGameServiceConfig instance for the next world that will start, automatically registering it with the @UGameServiceManager.
+	 * @note This is mainly intended to be used in automation tests, before a test world is created.
+	 * @param ParentConfigClass The class of the config that should be used as parent configuration.
+	 * @param bAutoStartServices Whether the services should be automatically started when the service manager starts.
+	 * @param ConfigExec (Optional) External function to be called to configure the config instance before it is registered.
+	 * @returns the created and already registered service config.
+	 *
+	 * @example:
+	 * UGameServiceConfig::CreateForNextWorld<UMyGameServiceConfig>([](UGameServiceConfig& Config)
+	 * {
+	 *    Config.SetPriority(7);
+	 *    Config.AddService<USomeService>();
+	 *    Config.AddService<IAnotherServiceInterface, UAnotherServiceImpl>();
+	 * });
+	 */
+	static UGameServiceConfig& CreateForNextWorld(const TSubclassOf<UGameServiceConfig> ParentConfigClass, bool bAutoStartServices, TFunction<void(UGameServiceConfig&)> ConfigExec = nullptr);
+	template<class ConfigClass> static UGameServiceConfig& CreateForNextWorld(bool bAutoStartServices, TFunction<void(UGameServiceConfig&)> ConfigExec = nullptr)
+	{
+		return CreateForNextWorld(ConfigClass::StaticClass(), bAutoStartServices, ConfigExec);
+	}
 
 	/** Automatically registers the config instance with the @UGameServiceManager. Already called when using @CreateForWorld(). */
 	void RegisterWithGameServiceManager(const UWorld& World) const;
@@ -107,30 +131,28 @@ public:
 		ConfiguredTemplates.Add(RegisterClass, &TemplateInstance);
 	}
 
-	FORCEINLINE int32 GetNumConfiguredServices() const { return ConfiguredServices.Num(); }
-	FORCEINLINE const TMap<FGameServiceClass, FGameServiceInstanceClass>& GetConfiguredServices() const
-	{
-		return ConfiguredServices;
-	}
-	FORCEINLINE const UGameServiceBase* GetConfiguredServiceTemplate(const FGameServiceClass& RegisterClass) const
-	{
-		return (ConfiguredTemplates.Contains(RegisterClass) ? ConfiguredTemplates[RegisterClass] : nullptr);
-	}
+	int32 GetNumConfiguredServices() const;
+	TMap<FGameServiceClass, FGameServiceInstanceClass> GetConfiguredServices() const;
+	const UGameServiceBase* GetConfiguredServiceTemplate(const FGameServiceClass& RegisterClass) const;
 
 	/** Configs with a higher priority will overwrite service registrations from configs with lower priority. */
 	FORCEINLINE void SetPriority(uint32 NewPriority) { ConfiguredPriority = NewPriority; }
 	FORCEINLINE uint32 GetPriority() const { return ConfiguredPriority; }
 
 protected:
+	/** When set, inherits any service configurations from this parent config. */
+	UPROPERTY(EditAnywhere, Category = "GameServices")
+	TSubclassOf<UGameServiceConfig> ParentConfigClass = nullptr;
+
 	/** Key: FGameServiceClass | Value: FGameServiceInstanceClass */
-	UPROPERTY(VisibleAnywhere, Category = "Weekend Utils|Game Service")
+	UPROPERTY(VisibleAnywhere, Category = "GameServices")
 	TMap<TSubclassOf<UObject>, TSubclassOf<UGameServiceBase>> ConfiguredServices;
 
 	/** Key: FGameServiceClass | Value: UGameService Instance */
-	UPROPERTY(VisibleAnywhere, Category = "Weekend Utils|Game Service")
+	UPROPERTY(VisibleAnywhere, Category = "GameServices")
 	TMap<TSubclassOf<UObject>, TObjectPtr<const UGameServiceBase>> ConfiguredTemplates;
 
-	UPROPERTY(VisibleAnywhere, Category = "Weekend Utils|Game Service")
+	UPROPERTY(VisibleAnywhere, Category = "GameServices")
 	uint32 ConfiguredPriority = 0;
 
 	void ResetConfiguredServices();

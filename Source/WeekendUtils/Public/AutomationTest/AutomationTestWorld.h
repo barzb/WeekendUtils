@@ -9,9 +9,12 @@
 
 #pragma once
 
+#include "CoreMinimal.h"
+
 #if WITH_AUTOMATION_WORKER
 
-#include "CoreMinimal.h"
+#include "Engine/EngineBaseTypes.h"
+#include "Templates/SubclassOf.h"
 
 #include "Tests/AutomationCommon.h"
 

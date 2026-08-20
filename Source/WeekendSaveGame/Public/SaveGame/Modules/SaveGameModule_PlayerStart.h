@@ -31,10 +31,10 @@ public:
 		ModuleVersion = 0;
 	}
 
-	UPROPERTY(SaveGame, EditAnywhere, Category = "Weekend Utils|Save Game")
+	UPROPERTY(SaveGame, EditAnywhere, Category = "SaveGame")
 	FString PlayerStartTag = FString();
 
-	UPROPERTY(SaveGame, VisibleAnywhere, Category = "Weekend Utils|Save Game")
+	UPROPERTY(SaveGame, VisibleAnywhere, Category = "SaveGame")
 	FTransform WorldCoordinates = FTransform();
 
 	void AppendAsTravelPortalOption(FString& Options) const

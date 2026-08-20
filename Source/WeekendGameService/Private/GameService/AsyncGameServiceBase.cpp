@@ -9,6 +9,8 @@
 
 #include "GameService/AsyncGameServiceBase.h"
 
+#include "Engine/World.h"
+
 void UAsyncGameServiceBase::StartService()
 {
 	ensure(CurrentStatus == EAsyncServiceStatus::Inactive);
@@ -99,6 +101,7 @@ TOptional<FString> UAsyncGameServiceBase::GetServiceStatusInfo() const
 
 void UAsyncGameServiceBase::FinishServiceStart()
 {
+	ensureMsgf(CurrentStatus != EAsyncServiceStatus::Running, TEXT("FinishServiceStart called again after %s is already running"), *GetName());
 	CurrentStatus = EAsyncServiceStatus::Running;
 
 	while (PendingServiceStartCallbacks.Num() > 0)
@@ -109,6 +112,7 @@ void UAsyncGameServiceBase::FinishServiceStart()
 
 void UAsyncGameServiceBase::FinishServiceShutdown()
 {
+	ensureMsgf(CurrentStatus != EAsyncServiceStatus::Inactive, TEXT("FinishServiceShutdown called again after %s is already shut-down"), *GetName());
 	CurrentStatus = EAsyncServiceStatus::Inactive;
 	RemoveFromRoot(); // Free up for GC again.
 }

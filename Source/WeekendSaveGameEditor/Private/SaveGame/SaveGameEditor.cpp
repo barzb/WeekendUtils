@@ -1,15 +1,12 @@
-﻿///////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////
 /// Copyright (C) by Benjamin Barz and contributors. See file: CREDITS.md
 ///
 /// This file is part of the WeekendUtils UE5 Plugin.
 ///
 /// Distributed under the MIT License. See file: LICENSE.md
-///
 ///////////////////////////////////////////////////////////////////////////////////////
 
 #include "SaveGame/SaveGameEditor.h"
-
-#if WITH_EDITORONLY_DATA
 
 #include "DesktopPlatformModule.h"
 #include "Editor.h"
@@ -18,13 +15,12 @@
 #include "Factories/DataAssetFactory.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameService/GameServiceLocator.h"
-#include "Math/UnitConversion.h"
 #include "Misc/FileHelper.h"
 #include "Misc/MessageDialog.h"
 #include "SaveGame/ModularSaveGame.h"
+#include "SaveGame/SaveGameObjectPreset.h"
 #include "SaveGame/SaveGamePreset.h"
 #include "SaveGame/SaveGameService.h"
-#include "SaveGame/SaveGameUtils.h"
 #include "SaveGame/Settings/SaveGameServiceSettings.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 
@@ -40,7 +36,6 @@ void USaveGameEditor::OpenSaveGameEditor(const USaveGame* SaveGame)
 
 	if (!ShownInstance.IsValid())
 	{
-		// (i) Need to be kept alive or the editor crashes on GC.
 		ShownInstance = TStrongObjectPtr(NewObject<USaveGameEditor>(GetTransientPackage(), FName("Savegame Editor")));
 	}
 
@@ -52,12 +47,8 @@ void USaveGameEditor::OpenSaveGameEditor(const USaveGame* SaveGame)
 
 void USaveGameEditor::OpenSaveGameEditorForCurrentSaveGame()
 {
-	const FWorldContext* WorldContext = GEngine->GetWorldContextFromPIEInstance(0);
-	if (!WorldContext)
-		return;
-
 	const USaveGame* SaveGame = nullptr;
-	if (const USaveGameService* SaveGameService = UGameServiceLocator::FindService<USaveGameService>(WorldContext->World()))
+	if (const USaveGameService* SaveGameService = UGameServiceLocator::FindService<USaveGameService>(GEngine->GetCurrentPlayWorld()))
 	{
 		const FCurrentSaveGame& CurrentSaveGame = SaveGameService->GetCurrentSaveGame();
 		SaveGame = CurrentSaveGame.GetPtr();
@@ -79,9 +70,9 @@ void USaveGameEditor::ConvertToPreset()
 	if (UObject* CreatedAsset = IAssetTools::Get().CreateAssetWithDialog(
 		AssetPrefix, DefaultFolder, USaveGamePreset::StaticClass(), PresetFactory, NAME_None, false))
 	{
-		USaveGamePreset* CreatedPreset = Cast<USaveGamePreset>(CreatedAsset);
+		USaveGameObjectPreset* CreatedPreset = Cast<USaveGameObjectPreset>(CreatedAsset);
 		CreatedPreset->HeaderData = HeaderData;
-		CreatedPreset->SaveGame = DuplicateObject<USaveGame>(SaveGame, CreatedAsset);
+		CreatedPreset->SetPresetSaveGame(*DuplicateObject<USaveGame>(SaveGame, CreatedAsset));
 
 		const FString AssetNameWithoutPrefix = CreatedAsset->GetName().Replace(*AssetPrefix, TEXT(""));
 		CreatedPreset->PresetName = AssetNameWithoutPrefix;
@@ -93,11 +84,7 @@ void USaveGameEditor::ConvertToPreset()
 
 void USaveGameEditor::EditCurrentSaveGame()
 {
-	const FWorldContext* WorldContext = GEngine->GetWorldContextFromPIEInstance(0);
-	if (!WorldContext)
-		return;
-
-	if (const USaveGameService* SaveGameService = UGameServiceLocator::FindService<USaveGameService>(WorldContext->World()))
+	if (const USaveGameService* SaveGameService = UGameServiceLocator::FindService<USaveGameService>(GEngine->GetCurrentPlayWorld()))
 	{
 		const FCurrentSaveGame& CurrentSaveGame = SaveGameService->GetCurrentSaveGame();
 		SetSaveGame(CurrentSaveGame.GetPtr(), FString("(Current SaveGame)"));
@@ -185,15 +172,3 @@ void USaveGameEditor::SetSaveGame(const USaveGame* InSaveGame, TOptional<FString
 		EditorInfo += "\n" + *OptionalInfo;
 	}
 }
-
-#else
-
-void USaveGameEditor::OpenSaveGameEditor(const USaveGame*) { unimplemented(); }
-void USaveGameEditor::OpenSaveGameEditorForCurrentSaveGame() { unimplemented(); }
-void USaveGameEditor::ConvertToPreset() { unimplemented(); }
-void USaveGameEditor::EditCurrentSaveGame() { unimplemented(); }
-void USaveGameEditor::EditSaveGameFromFile() { unimplemented(); }
-void USaveGameEditor::AnalyzeSaveGameComposition() { unimplemented(); }
-void USaveGameEditor::SetSaveGame(const USaveGame* InSaveGame, TOptional<FString> OptionalInfo) { unimplemented(); }
-
-#endif

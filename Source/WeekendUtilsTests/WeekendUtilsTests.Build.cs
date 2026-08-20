@@ -26,6 +26,7 @@ public class WeekendUtilsTests : ModuleRules
 			{
 				"CoreUObject",
 				"Engine",
+				"GameplayTags",
 				"WeekendCheatMenu",
 				"WeekendGameService",
 				"WeekendSaveGame",

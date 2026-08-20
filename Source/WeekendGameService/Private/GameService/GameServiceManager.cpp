@@ -10,6 +10,9 @@
 #include "GameService/GameServiceManager.h"
 
 #include "WeekendGameService.h"
+#include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
 #include "GameService/GameServiceConfig.h"
 #include "GameService/AsyncGameServiceBase.h"
 
@@ -68,9 +71,19 @@ UGameServiceManager& UGameServiceManager::SummonInstance(const UObject* WorldCon
 
 UGameServiceManager* UGameServiceManager::FindInstance(const UObject* WorldContextObject)
 {
-	check(WorldContextObject && !WorldContextObject->HasAnyFlags(RF_ClassDefaultObject));
-	const UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
-	check(World);
+	// (i) This is the optional counterpart of SummonInstance(), so a context object that is not (or no longer) bound to
+	// a world must not be fatal: UGameInstance::Shutdown() clears the world context of its game instance, while still
+	// alive UGameInstanceSubsystems of that game instance can keep ticking until they are garbage collected. The context
+	// object itself can also already be gone by then, because service users only keep a weak pointer to it.
+	if (!WorldContextObject || WorldContextObject->HasAnyFlags(RF_ClassDefaultObject))
+		return nullptr;
+
+	// ReturnNull without logging: a context without a world is a legal "not found" case here (see above),
+	// e.g. GameFeatureActions looking up services while no game world exists.
+	const UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull);
+	if (World == nullptr)
+		return nullptr;
+
 	const UGameInstance* GameInstance = World->GetGameInstance();
 	if (!GGameServiceManagers.ExistsForGameInstance(GameInstance))
 		return nullptr;
@@ -458,7 +471,16 @@ UGameServiceBase* UGameServiceManager::CreateServiceInstance(UObject& Owner, con
 	const FName InstanceName = MakeUniqueObjectName(&Owner, ServiceInstanceClass);
 	if (TemplateInstance == nullptr)
 		return NewObject<UGameServiceBase>(&Owner, ServiceInstanceClass, InstanceName);
-	return DuplicateObject<UGameServiceBase>(TemplateInstance, &Owner, InstanceName);
+
+	UGameServiceBase* ServiceInstance = DuplicateObject<UGameServiceBase>(TemplateInstance, &Owner, InstanceName);
+
+	// (i) Configured service templates are usually default subobjects of a UGameServiceConfig CDO, so they carry the
+	// archetype object flags - and DuplicateObject() copies those flags onto the duplicate. The result is a live,
+	// world-bound service instance that reports UObject::IsTemplate() == true, which makes every API that distinguishes
+	// runtime instances from templates - like the world context resolution in FGameServiceUser - misjudge it.
+	ServiceInstance->ClearFlags(RF_ClassDefaultObject | RF_ArchetypeObject | RF_DefaultSubObject);
+
+	return ServiceInstance;
 }
 
 void UGameServiceManager::StartServiceDependencies(UWorld& TargetWorld, const UGameServiceBase& ServiceInstance)

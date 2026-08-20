@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include "CoreMinimal.h"
+
 #if WITH_AUTOMATION_WORKER
 
 #include "Misc/AutomationTest.h"

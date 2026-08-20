@@ -38,10 +38,20 @@ public class WeekendUtils : ModuleRules
 				"GameplayTasks",
 				"InputCore",
 				"Projects",
-				"Slate",
-				"SlateCore",
+				"Slate", "SlateCore",
 				"UMG",
 			}
 		);
+
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.AddRange(
+				new string[]
+				{
+					"AutomationController",
+					"SessionFrontend",
+				}
+			);
+		}
 	}
 }

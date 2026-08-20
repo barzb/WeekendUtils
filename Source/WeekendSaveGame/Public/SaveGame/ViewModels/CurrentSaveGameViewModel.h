@@ -29,13 +29,13 @@ class WEEKENDSAVEGAME_API UCurrentSaveGameViewModel : public UMVVMViewModelBase,
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	bool bCanContinue = false;
 
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	bool bHasTimeOfLastSave = false;
 
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	FDateTime UtcTimeOfLastSave = FDateTime();
 
 	UFUNCTION(BlueprintCallable, Category = "Weekend Utils|Save Game")

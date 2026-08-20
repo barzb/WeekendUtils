@@ -23,6 +23,7 @@ class UGameServiceConfig;
  * The runner will do the following things:
  * - Register @UGameModeServiceConfigBase objects that apply to the current world
  * - Make sure all @UWorldSubsystem dependencies of configured game services are available
+ * - Start all configured game service world bootstrapper
  * - Start all configured game services for the current world in the correct order
  * - Tick all running game services (that want to be ticked)
  * - Shutdown relevant running services when the world tears down
@@ -43,12 +44,17 @@ public:
 	virtual void Deinitialize() override;
 	// --
 
+
 	/** Sets a specific @UGameServiceConfig instance to be used when the next world is starting. */
 	static void SetServiceConfigForNextWorld(UGameServiceConfig& ServiceConfig);
+	static void SetServiceConfigForNextWorld(UGameServiceConfig& ServiceConfig, bool bAutoStartServices);
 
 private:
 	void RegisterAutoServiceConfigs();
+	void RunWorldBootstrappers();
 	void StartRegisteredServices();
 	void TickRunningServices(float DeltaTime);
 	TArray<TSubclassOf<UWorldSubsystem>> GatherWorldSubsystemDependencies() const;
+
+	bool bAutoStartServicesForNextWorld = true; 
 };

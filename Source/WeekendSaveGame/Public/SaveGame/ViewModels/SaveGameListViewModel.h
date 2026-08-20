@@ -36,7 +36,7 @@ class WEEKENDSAVEGAME_API USaveGameListViewModel : public UMVVMViewModelBase,
 public:
 	using FSlotName = FString;
 
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	TArray<TObjectPtr<USaveGameSlotViewModel>> Slots = {};
 
 	// - FGameServiceUser
@@ -75,7 +75,7 @@ class WEEKENDSAVEGAME_API USaveGameSaveListViewModel : public USaveGameListViewM
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	bool bIsSavingAllowed = true;
 
 	// - USaveGameListViewModel
@@ -99,7 +99,7 @@ class WEEKENDSAVEGAME_API USaveGameLoadListViewModel : public USaveGameListViewM
 	GENERATED_BODY()
 
 protected:
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	bool bIsLoadingAllowed = true;
 
 	// - USaveGameListViewModel

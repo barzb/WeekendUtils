@@ -17,6 +17,7 @@
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
 #include "Serialization/ObjectAndNameAsStringProxyArchive.h"
+#include "Templates/Greater.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogLevelObjectRestorer, Log, All);
 
@@ -177,7 +178,12 @@ void ULevelObjectRestorer::UnregisterLevelObjectWithTransform(USceneComponent& S
 	}
 }
 
-FString ULevelObjectRestorer::MakeSafeUniqueObjectId(const UObject& Object)
+const FLevelObjectSaveGameState* ULevelObjectRestorer::FindObjectState(const FString& UniqueObjectId) const
+{
+	return ObjectStates.Find(UniqueObjectId);
+}
+
+FString ULevelObjectRestorer::MakeSafeUniqueObjectId(const UObject& Object) const
 {
 	// (i) Stop GetPathName() at the world-outer, then prefix the path with just the world name, not the whole path to the world.
 	// This is done to avoid ID mismatches between PIE worlds and standalone worlds, so standalone saves can be properly loaded in PIE.
@@ -185,7 +191,28 @@ FString ULevelObjectRestorer::MakeSafeUniqueObjectId(const UObject& Object)
 	const FString ObjectPath = Object.GetPathName(Object.GetTypedOuter<ULevel>());
 	const FString LevelName = Object.GetTypedOuter<ULevel>()->GetName();
 	const FString WorldName = Object.GetWorld()->GetName();
-	return WorldName + ":" + LevelName + "." + ObjectPath;
+	FString ObjectId = WorldName + ":" + LevelName + "." + ObjectPath;
+
+	// Replace any part of the ObjectId that matches a registered redirect:
+	for (const TTuple<FString, FString>& Redirect : UniqueObjectIdRedirects)
+	{
+		if (!ObjectId.Contains(Redirect.Key))
+			continue;
+
+		ObjectId = ObjectId.Replace(*Redirect.Key, *Redirect.Value);
+		UE_LOG(LogLevelObjectRestorer, Verbose, TEXT("(!) Redirecting UniqueObjectId: %s -> %s"), *ObjectId, *Redirect.Value);
+	}
+
+	return ObjectId;
+}
+
+void ULevelObjectRestorer::RegisterUniqueObjectIdRedirects(const TMap<FString, FString>& AdditionalUniqueObjectIdRedirects)
+{
+	for (const TTuple<FString, FString>& Pair : AdditionalUniqueObjectIdRedirects)
+	{
+		UE_LOG(LogLevelObjectRestorer, Log, TEXT("Registering UniqueObjectId redirect: %s -> %s"), *Pair.Key, *Pair.Value);
+		UniqueObjectIdRedirects.Add(Pair.Key, Pair.Value);
+	}
 }
 
 void ULevelObjectRestorer::Serialize(FArchive& Ar)

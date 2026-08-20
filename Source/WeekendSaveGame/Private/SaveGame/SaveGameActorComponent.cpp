@@ -49,6 +49,11 @@ void USaveGameActorComponent::UninitializeComponent()
 
 void USaveGameActorComponent::RegisterWithSaveGame()
 {
+	if (ObjectIdRedirects.Num() > 0)
+	{
+		LevelObjectRestorer->RegisterUniqueObjectIdRedirects(ObjectIdRedirects);
+	}
+
 	// Owning Actor:
 	if (bRestoreActorTransform)
 	{

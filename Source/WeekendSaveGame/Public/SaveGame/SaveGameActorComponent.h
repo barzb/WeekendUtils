@@ -37,32 +37,36 @@ protected:
 	/// CLASS CONFIG
 
 	/** When enabled, the actors transform will be saved and restored by the SaveGame. */
-	UPROPERTY(EditAnywhere, Category = "Weekend Utils|Save Game")
+	UPROPERTY(EditAnywhere, Category = "SaveGame")
 	bool bRestoreActorTransform = true;
 
 	/** When enabled, the actors components will be saved and restored by the SaveGame. */
-	UPROPERTY(EditAnywhere, Category = "Weekend Utils|Save Game")
+	UPROPERTY(EditAnywhere, Category = "SaveGame")
 	bool bRestoreActorComponents = true;
 
 	/** When enabled, only components on the actor with configured ComponentTag will be saved and restored by the SaveGame. */
-	UPROPERTY(EditAnywhere, Category = "Weekend Utils|Save Game", meta = (EditCondition = "bRestoreActorComponents"))
+	UPROPERTY(EditAnywhere, Category = "SaveGame", meta = (EditCondition = "bRestoreActorComponents"))
 	bool bOnlyRestoreActorComponentsWithTag = false;
 
 	/** Only components on the actor with this ComponentTag will be saved and restored by the SaveGame. */
-	UPROPERTY(EditAnywhere, Category = "Weekend Utils|Save Game", meta = (EditCondition = "bRestoreActorComponents && bOnlyRestoreActorComponentsWithTag"))
+	UPROPERTY(EditAnywhere, Category = "SaveGame", meta = (EditCondition = "bRestoreActorComponents && bOnlyRestoreActorComponentsWithTag"))
 	FString RestorableComponentTag = FString("SaveGame.Properties");
 
 	/** When enabled, all of the actors SceneComponent transforms will be saved and restored by the SaveGame. */
-	UPROPERTY(EditAnywhere, Category = "Weekend Utils|Save Game", meta = (EditCondition = "bRestoreActorComponents"))
+	UPROPERTY(EditAnywhere, Category = "SaveGame", meta = (EditCondition = "bRestoreActorComponents"))
 	bool bRestoreComponentTransforms = false;
 
 	/** When enabled, only transforms of SceneComponents on the actor with configured ComponentTag will be saved and restored by the SaveGame. */
-	UPROPERTY(EditAnywhere, Category = "Weekend Utils|Save Game", meta = (EditCondition = "bRestoreActorComponents && bRestoreComponentTransforms"))
+	UPROPERTY(EditAnywhere, Category = "SaveGame", meta = (EditCondition = "bRestoreActorComponents && bRestoreComponentTransforms"))
 	bool bOnlyRestoreTransformsOfComponentsWithTag = false;
 
 	/** Only transforms of SceneComponents on the actor with this ComponentTag will be saved and restored by the SaveGame. */
-	UPROPERTY(EditAnywhere, Category = "Weekend Utils|Save Game", meta = (EditCondition = "bRestoreActorComponents && bRestoreComponentTransforms && bOnlyRestoreTransformsOfComponentsWithTag"))
+	UPROPERTY(EditAnywhere, Category = "SaveGame", meta = (EditCondition = "bRestoreActorComponents && bRestoreComponentTransforms && bOnlyRestoreTransformsOfComponentsWithTag"))
 	FString RestorableComponentTransformTag = FString("SaveGame.Transform");
+
+	/** (Optional) Redirects for any UniqueObjectId's of this actor (or any of its components). Can also replace substring of UniqueObjectId's. */
+	UPROPERTY(EditAnywhere, Category = "SaveGame")
+	TMap<FString, FString> ObjectIdRedirects = {};
 
 	///////////////////////////////////////////////////////////////////////////////////////
 	/// RUNTIME STATE

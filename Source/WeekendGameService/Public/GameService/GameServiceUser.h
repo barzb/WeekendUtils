@@ -10,6 +10,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/TimerHandle.h"
 #include "GameService/GameServiceUtils.h"
 #include "UObject/WeakInterfacePtr.h"
 
@@ -25,8 +26,8 @@ class UWorldSubsystem;
  *			.AddServiceDependency<USomeService>()
  *			.AddServiceDependency<USomeOtherService>()
  *			.AddSubsystemDependency<USomeSubsystem>();
- *	Grand-child classes should consider calling Super::ConfigureGameServiceUser() to
- *	inherit the dependency configured by their parents.
+ *	Grand-child classes should consider calling Super::ConfigureGameServiceUser() to inherit the dependency configured by their parents.
+ *	@note that GameServiceUsers need access to a World via the passed WorldContextObject.
  */
 struct WEEKENDGAMESERVICE_API FGameServiceUserConfig
 {
@@ -90,7 +91,9 @@ private:
  *     @example: WaitForDependencies(FOnWaitingFinished::CreateUObject(this, &ThisClass::ExecuteCodeRelyingOnAsyncDependencies));
  *
  * @remark Inheriting classes must implement @ConfigureGameServiceUser().
- * @remark Much of the API allows passing an @OptionalWorldContext object allowing to access services also on ClassDefaultObjects.
+ * @remark The world context configured by @ConfigureGameServiceUser() is used by default. Objects that cannot reach a world
+ *         themselves - class default objects, archetypes, instanced subobjects of assets - must pass a world-bound
+ *         @OptionalWorldContext instead, otherwise the API reports the misuse.
  */
 class WEEKENDGAMESERVICE_API FGameServiceUser
 {
@@ -104,13 +107,13 @@ public:
 	virtual void CheckGameServiceDependencies() const {}
 
 	/** @returns all game service classes that this service user depends on. */
-	TArray<FGameServiceClass> GetServiceClassDependencies() const;
+	FGameServiceDependencies GetServiceClassDependencies() const;
 
 	/** @returns all subsystem classes that this service user depends on. */
-	TArray<TSubclassOf<USubsystem>> GetSubsystemClassDependencies() const;
+	FSubsystemDependencies GetSubsystemClassDependencies() const;
 
 	/** @returns all optional subsystem classes that this service user depends on. */
-	TArray<TSubclassOf<USubsystem>> GetOptionalSubsystemClassDependencies() const;
+	FSubsystemDependencies GetOptionalSubsystemClassDependencies() const;
 
 	/** @returns whether all game service dependencies are running and all subsystem dependencies are available. */
 	bool AreAllDependenciesReady(const UObject* OptionalWorldContext = nullptr) const;

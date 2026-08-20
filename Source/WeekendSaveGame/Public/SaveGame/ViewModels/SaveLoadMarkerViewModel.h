@@ -33,16 +33,16 @@ public:
 	virtual FGameServiceUserConfig ConfigureGameServiceUser() const override;
 	// --
 
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	ESlateVisibility SuggestedWidgetVisibility = ESlateVisibility::Collapsed;
 
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	bool bIsSavingOrLoading = false;
 
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	bool bIsLoading = false;
 
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	bool bIsSaving = false;
 
 	UFUNCTION(BlueprintCallable, Category = "Weekend Utils|Save Game")

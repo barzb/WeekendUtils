@@ -15,6 +15,8 @@
 
 #include "GameModeServiceConfigBase.generated.h"
 
+class UGameServiceWorldBootstrapper;
+
 /**
  * Base class for configurations whose CDO will be automatically registered with the @UGameServiceManager.
  * Derived configurations should define at least one @AGameModeBase class.
@@ -43,10 +45,28 @@ public:
 	/** Registers this config class to be used for worlds with given game mode class. */
 	void RegisterFor(const TSubclassOf<AGameModeBase>& GameModeClass);
 	template<class T> void RegisterFor() { RegisterFor(T::StaticClass()); }
+	
+	/** Configures a game service world bootstrapper which will be run before any service was started. */
+	template<class BootstrapperClass>
+	void AddWorldBootstrapper()
+	{
+		static_assert(TIsDerivedFrom<BootstrapperClass, UGameServiceWorldBootstrapper>::Value);
+		check(!BootstrapperClass::StaticClass()->HasAnyClassFlags(CLASS_Abstract));
+		WorldBootstrappers.Emplace(BootstrapperClass::StaticClass());
+	}
+	
+	/** @returns all the bootstrapper classes configured on this config. */
+	FORCEINLINE const TArray<TSubclassOf<UGameServiceWorldBootstrapper>>& GetWorldBootstrappers() const
+	{
+		return WorldBootstrappers;
+	}
 
 protected:
-	UPROPERTY(VisibleAnywhere, Category = "Weekend Utils|Game Service")
+	UPROPERTY(VisibleAnywhere, Category = "GameServices")
 	TArray<TSubclassOf<AGameModeBase>> ConfiguredGameModes = {};
+	
+	UPROPERTY(VisibleAnywhere, Category = "GameServices")
+	TArray<TSubclassOf<UGameServiceWorldBootstrapper>> WorldBootstrappers;
 
 	void Reconfigure();
 

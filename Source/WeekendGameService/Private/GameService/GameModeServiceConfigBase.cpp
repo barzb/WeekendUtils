@@ -10,6 +10,8 @@
 #include "GameService/GameModeServiceConfigBase.h"
 
 #include "GameMapsSettings.h"
+#include "Engine/World.h"
+#include "GameFramework/WorldSettings.h"
 #include "GameService/Settings/GameServiceFrameworkSettings.h"
 
 namespace

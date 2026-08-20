@@ -52,6 +52,12 @@ TOptional<FString> URestorableGameServiceBase::GetServiceStatusInfo() const
 	return Super::GetServiceStatusInfo();
 }
 
+USaveGameService& URestorableGameServiceBase::GetSaveGameService() const
+{
+	checkf(SaveGameService.IsValid(), TEXT("Call only after this service has been started."));
+	return *SaveGameService.Get();
+}
+
 void URestorableGameServiceBase::HandleSaveGameLoaded(const FCurrentSaveGame& SaveGame)
 {
 	if (IsServiceRunning())
@@ -63,5 +69,10 @@ void URestorableGameServiceBase::HandleSaveGameLoaded(const FCurrentSaveGame& Sa
 		bIsWaitingForSaveGameRestore = false;
 		StartRestorableService(SaveGame);
 		FinishServiceStart();
+	}
+
+	if (!bCanRestoreMultipleSaveGames)
+	{
+		SaveGameService->OnAfterRestored.RemoveAll(this);
 	}
 }

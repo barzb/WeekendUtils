@@ -112,7 +112,7 @@ void UAsyncGameServiceBase::FinishServiceStart()
 
 void UAsyncGameServiceBase::FinishServiceShutdown()
 {
-	ensureMsgf(CurrentStatus != EAsyncServiceStatus::Running, TEXT("FinishServiceShutdown called again after %s is already shut-down"), *GetName());
+	ensureMsgf(CurrentStatus != EAsyncServiceStatus::Inactive, TEXT("FinishServiceShutdown called again after %s is already shut-down"), *GetName());
 	CurrentStatus = EAsyncServiceStatus::Inactive;
 	RemoveFromRoot(); // Free up for GC again.
 }

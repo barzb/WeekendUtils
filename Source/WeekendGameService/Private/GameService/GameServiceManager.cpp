@@ -471,7 +471,16 @@ UGameServiceBase* UGameServiceManager::CreateServiceInstance(UObject& Owner, con
 	const FName InstanceName = MakeUniqueObjectName(&Owner, ServiceInstanceClass);
 	if (TemplateInstance == nullptr)
 		return NewObject<UGameServiceBase>(&Owner, ServiceInstanceClass, InstanceName);
-	return DuplicateObject<UGameServiceBase>(TemplateInstance, &Owner, InstanceName);
+
+	UGameServiceBase* ServiceInstance = DuplicateObject<UGameServiceBase>(TemplateInstance, &Owner, InstanceName);
+
+	// (i) Configured service templates are usually default subobjects of a UGameServiceConfig CDO, so they carry the
+	// archetype object flags - and DuplicateObject() copies those flags onto the duplicate. The result is a live,
+	// world-bound service instance that reports UObject::IsTemplate() == true, which makes every API that distinguishes
+	// runtime instances from templates - like the world context resolution in FGameServiceUser - misjudge it.
+	ServiceInstance->ClearFlags(RF_ClassDefaultObject | RF_ArchetypeObject | RF_DefaultSubObject);
+
+	return ServiceInstance;
 }
 
 void UGameServiceManager::StartServiceDependencies(UWorld& TargetWorld, const UGameServiceBase& ServiceInstance)

@@ -1,4 +1,4 @@
-﻿///////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////
 /// Copyright (C) by Benjamin Barz and contributors. See file: CREDITS.md
 ///
 /// This file is part of the WeekendUtils UE5 Plugin.
@@ -10,9 +10,37 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/WeakObjectPtrTemplates.h"
 
 namespace WeekendUtils
 {
+	/**
+	 * Returns a TArray<ClassName*> built from a TArray<TWeakObjectPtr<ClassName>>, skipping stale/null entries.
+	 * Return-value counterpart of the engine's CopyFromWeakArray(Dest, Src), e.g. for use in range-based for loops:
+	 * @code for (UObject* Object : WeekendUtils::CopyFromWeakArray(WeakObjects)) { ... } @endcode
+	 * @note The returned raw pointers are only guaranteed valid until the next garbage collection, so do not store the result.
+	 */
+	template <typename SourceArrayType>
+	auto CopyFromWeakArray(const SourceArrayType& Src)
+	{
+		TArray<decltype(Src[0].Get())> Dest;
+		::CopyFromWeakArray(OUT Dest, Src);
+		return Dest;
+	}
+
+	/**
+	 * Returns a TArray<TWeakObjectPtr<ClassName>> built from a TArray<TObjectPtr<ClassName>> or TArray<ClassName*>, skipping null entries.
+	 * Return-value counterpart of the engine's CopyToWeakArray(Dest, Src).
+	 */
+	template <typename SourceArrayType>
+	auto CopyToWeakArray(const SourceArrayType& Src)
+	{
+		using ObjectType = std::remove_reference_t<decltype(*Src[0])>;
+		TArray<TWeakObjectPtr<ObjectType>> Dest;
+		::CopyToWeakArray(OUT Dest, Src);
+		return Dest;
+	}
+
 	/** Compares two unsorted arrays using a custom sorting function. Stolen from WorldPartitionActorDesc.h */
 	template <typename T, class F>
 	bool AreUnsortedArraysEqual(const TArray<T>& Array1, const TArray<T>& Array2, F Func)

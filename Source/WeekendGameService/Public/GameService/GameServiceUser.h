@@ -94,6 +94,9 @@ private:
  * @remark The world context configured by @ConfigureGameServiceUser() is used by default. Objects that cannot reach a world
  *         themselves - class default objects, archetypes, instanced subobjects of assets - must pass a world-bound
  *         @OptionalWorldContext instead, otherwise the API reports the misuse.
+ * @remark The optional parts of the API remain safe to use while the user object is being destroyed, so service users
+ *         can unbind and unregister from services in their own BeginDestroy(). Lookups still resolve while the world
+ *         is alive and gracefully return "not found" once it is gone. Do not trigger new service logic from there.
  */
 class WEEKENDGAMESERVICE_API FGameServiceUser
 {

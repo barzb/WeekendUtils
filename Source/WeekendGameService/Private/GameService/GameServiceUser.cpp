@@ -56,25 +56,30 @@ namespace
 	}
 }
 
+// (i) A user object that is already being destroyed is a legal input here: service users are allowed to unbind and
+// unregister from services during their own BeginDestroy() - see @FGameServiceUserConfig::GetWorldContext().
+// Only a null user object is a programming error.
 FGameServiceUserConfig::FGameServiceUserConfig(const UObject& GameServiceUserObject): UserObject(MakeWeakObjectPtr(&GameServiceUserObject))
 {
-	checkf(IsValid(&GameServiceUserObject), TEXT("FGameServiceUserConfig() created with invalid UserObject! (%s)"), *GetNameSafe(&GameServiceUserObject));
 }
 
 FGameServiceUserConfig::FGameServiceUserConfig(const UObject* GameServiceUserObject): UserObject(MakeWeakObjectPtr(GameServiceUserObject))
 {
-	checkf(IsValid(GameServiceUserObject), TEXT("FGameServiceUserConfig() created with invalid UserObject! (%s)"), *GetNameSafe(GameServiceUserObject));
+	ensureAlwaysMsgf(GameServiceUserObject != nullptr, TEXT("FGameServiceUserConfig() created with null UserObject!"));
 }
 
 const UObject* FGameServiceUserConfig::GetWorldContext(const UObject* OverrideWorldContext) const
 {
-	if (IsValid(OverrideWorldContext))
+	if (OverrideWorldContext != nullptr)
 	{
 		ensureAlwaysMsgf(OverrideWorldContext->GetWorld(), TEXT("OverrideWorldContext cannot access any world - is CDO or transient? (%s)"), *GetPathNameSafe(OverrideWorldContext));
 		return OverrideWorldContext;
 	}
 
-	const UObject* WorldContext = UserObject.Get();
+	// (i) GetEvenIfUnreachable: a user object that unbinds from services during its own destruction must still resolve
+	// its world context, so lookups can reach the service manager while the world is alive. Once the world itself is
+	// gone, lookups degrade to a graceful "not found" - see @UGameServiceManager::FindInstance().
+	const UObject* WorldContext = UserObject.GetEvenIfUnreachable();
 	CheckWorldContextIsUsableWithoutOverride(WorldContext);
 	return WorldContext;
 }

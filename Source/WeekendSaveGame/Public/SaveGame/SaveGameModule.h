@@ -10,6 +10,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/Class.h"
+#include "UObject/Object.h"
 
 #include "SaveGameModule.generated.h"
 
@@ -32,11 +34,11 @@ public:
 	FOnAfterModuleRestored OnAfterModuleRestored;
 
 	/** Default identifier that must be unique across all modules and is used when a module is not registered by custom name. */
-	UPROPERTY(SaveGame, VisibleAnywhere, BlueprintReadWrite, Category = "Weekend Utils|Save Game")
+	UPROPERTY(SaveGame, VisibleAnywhere, BlueprintReadWrite, Category = "SaveGame")
 	FName DefaultModuleName = NAME_None;
 
 	/** Module version for potential compatibility checks. */
-	UPROPERTY(SaveGame, EditDefaultsOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(SaveGame, EditDefaultsOnly, Category = "SaveGame")
 	int32 ModuleVersion = 0;
 
 	// - UObject

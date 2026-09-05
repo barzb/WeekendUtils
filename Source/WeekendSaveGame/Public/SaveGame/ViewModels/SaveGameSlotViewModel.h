@@ -33,22 +33,23 @@ public:
 	FOnSaveLoadRequested OnLoadRequested;
 	FOnSaveLoadRequested OnSaveRequested;
 
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	bool bCanBeSavedFromWidget = false;
 
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	bool bCanBeLoadedFromWidget = false;
 
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	bool bIsCurrentSaveGame = false;
 
-	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(FieldNotify, BlueprintReadOnly, Category = "SaveGame")
 	bool bIsEmptySlot = false;
 
 	virtual void BindToModel(const FSlotName& SlotName, USaveGameService& SaveGameService, bool bCanSave, bool bCanLoad);
 	virtual void BindToSaveGame(const FSlotName& SlotName, const USaveGame& SaveGame) PURE_VIRTUAL(BindToSaveGame);
 	virtual void BindToEmptySlot(const FSlotName& SlotName) PURE_VIRTUAL(BindToEmptySlot);
 	virtual void UnbindFromModel() PURE_VIRTUAL(UnbindFromModel);
+	virtual const USaveGame* FindSaveGameForSlot(USaveGameService& SaveGameService, const FSlotName& SlotName) const;
 
 	FSlotName GetBoundSlotName() const { return BoundSlotName; }
 

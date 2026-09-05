@@ -19,6 +19,8 @@ public class WeekendSaveGame : ModuleRules
 			new string[]
 			{
 				"Core",
+				"CoreUObject",
+				"GameplayTags",
 				"ModelViewViewModel",
 				"UMG",
 				"WeekendGameService",
@@ -29,7 +31,6 @@ public class WeekendSaveGame : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"CoreUObject",
 				"DeveloperSettings",
 				"Engine",
 				"Slate",
@@ -43,10 +44,13 @@ public class WeekendSaveGame : ModuleRules
 			PrivateDependencyModuleNames.AddRange(
 				new string[]
 				{
-					"AssetTools",
+					"AutomationController",
 					"Blutility",
+					"FunctionalTesting",
 					"DesktopPlatform",
 					"LevelEditor",
+					"SessionFrontend",
+					"SourceControl",
 					"UnrealEd",
 				}
 			);

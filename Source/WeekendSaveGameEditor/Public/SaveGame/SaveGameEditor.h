@@ -1,10 +1,9 @@
-﻿///////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////
 /// Copyright (C) by Benjamin Barz and contributors. See file: CREDITS.md
 ///
 /// This file is part of the WeekendUtils UE5 Plugin.
 ///
 /// Distributed under the MIT License. See file: LICENSE.md
-///
 ///////////////////////////////////////////////////////////////////////////////////////
 
 #pragma once
@@ -21,7 +20,7 @@ class USaveGame;
  * [Editor Only] Container object that can show exposed properties of a SaveGame object.
  */
 UCLASS()
-class WEEKENDSAVEGAME_API USaveGameEditor : public UObject
+class WEEKENDSAVEGAMEEDITOR_API USaveGameEditor : public UObject
 {
 	GENERATED_BODY()
 
@@ -34,11 +33,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weekend Utils|Save Game|Editor", meta = (DevelopmentOnly))
 	static void OpenSaveGameEditorForCurrentSaveGame();
 
-protected:
 	// - UObject
 	virtual bool IsEditorOnly() const override { return true; }
 	// --
 
+protected:
 	/** Creates a new @USaveGamePreset data asset based on the currently edited SaveGame. */
 	UFUNCTION(CallInEditor, Category = "Editor", meta = (DevelopmentOnly), DisplayName = "Convert To Preset")
 	virtual void ConvertToPreset();
@@ -56,7 +55,6 @@ protected:
 
 	virtual void SetSaveGame(const USaveGame* InSaveGame, TOptional<FString> OptionalInfo = {});
 
-#if WITH_EDITORONLY_DATA
 	UPROPERTY(VisibleAnywhere, Transient, Category = "Editor")
 	FString EditorInfo = FString();
 
@@ -65,5 +63,4 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, Transient, Category = "Save Game")
 	FInstancedStruct HeaderData = FInstancedStruct();
-#endif
 };

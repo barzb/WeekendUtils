@@ -11,7 +11,6 @@
 #include "Cheat/CheatCommandCollection.h"
 #include "GameService/GameServiceLocator.h"
 #include "SaveGame/SaveGameService.h"
-#include "SaveGame/SaveGameEditor.h"
 
 DEFINE_CHEAT_COLLECTION(WeekendSaveGameCheats, AsCheatMenuTab("Save/Load"))
 {
@@ -36,18 +35,4 @@ DEFINE_CHEAT_COLLECTION(WeekendSaveGameCheats, AsCheatMenuTab("Save/Load"))
 
 		SaveGameService->RequestLoadCurrentSaveGameFromSlot("Cheat.SaveGame.LoadAutosave", SaveGameService->GetAutosaveSlotName());
 	}
-
-#if WITH_EDITOR
-	DEFINE_CHEAT_COMMAND(OpenSaveGameEditorCheat, "Cheat.SaveGame.OpenEditor")
-	.DisplayAs("Open SaveGame Editor")
-	DEFINE_CHEAT_EXECUTE(OpenSaveGameEditorCheat)
-	{
-		const USaveGameService* SaveGameService = UGameServiceLocator::FindService<USaveGameService>(GetWorld());
-		if (LogInvalidity(SaveGameService, "SaveGameService not available"))
-			return;
-
-		const FCurrentSaveGame& CurrentSaveGame = SaveGameService->GetCurrentSaveGame();
-		USaveGameEditor::OpenSaveGameEditor(CurrentSaveGame.GetPtr());
-	}
-#endif
 }

@@ -74,6 +74,8 @@ public:
 	bool HasModule(const FName& ModuleName, const TSubclassOf<T>& ModuleClass = T::StaticClass()) const;
 	bool HasModule(const FName& ModuleName) const { return Modules.Contains(ModuleName); }
 
+	template <typename T>
+	bool DeleteModule(const TSubclassOf<T>& ModuleClass = T::StaticClass());
 	bool DeleteModule(const FName& ModuleName) { return (Modules.Remove(ModuleName) > 0); }
 
 	void ForEachModule(const TFunction<void(const FName&, USaveGameModule&)>& Function);
@@ -177,7 +179,7 @@ T& UModularSaveGame::FindOrAddModule(const FName& ModuleName, const TSubclassOf<
 	T* NewModule = NewObject<T>(this, ModuleClass);
 	Modules.Add(ModuleName, NewModule);
 	checkf(ModuleName != NAME_None, TEXT("Tried to add module %s with unset name. ModuleName must not be empty or unset!."),
-		*ModuleClass->GetName());
+		*ModuleClass->GetName(), *ModuleName.ToString());
 	return *NewModule;
 }
 
@@ -233,6 +235,12 @@ bool UModularSaveGame::HasModule(const FName& ModuleName, const TSubclassOf<T>& 
 	static_assert(!TIsAbstract<T>::Value, "Type is abstract.");
 	const auto* FoundModule = FindModule<T>(ModuleName, ModuleClass);
 	return (FoundModule && (FoundModule->GetClass() == ModuleClass));
+}
+
+template <typename T>
+bool UModularSaveGame::DeleteModule(const TSubclassOf<T>& ModuleClass)
+{
+	return DeleteModule(GetDefault<T>(ModuleClass)->DefaultModuleName);
 }
 
 template <typename T>

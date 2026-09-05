@@ -10,9 +10,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "HAL/IConsoleManager.h"
 #include "SaveGame/SaveGameModule.h"
 
 #include "LevelObjectRestorer.generated.h"
+
+class USceneComponent;
+class AActor;
 
 ///////////////////////////////////////////////////////////////////////////////////////
 
@@ -23,7 +27,7 @@ struct WEEKENDSAVEGAME_API FLevelObjectSaveGameState
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(SaveGame, VisibleAnywhere, Category = "Weekend Utils|Save Game")
+	UPROPERTY(SaveGame, VisibleAnywhere, Category = "SaveGame")
 	int32 ByteDataSize = 0;
 
 	UPROPERTY(SaveGame)
@@ -93,8 +97,14 @@ public:
 	void UnregisterLevelObjectWithTransform(AActor& Actor, TOptional<FString> CustomUniqueObjectId = {}, bool bKeepObjectState = true);
 	void UnregisterLevelObjectWithTransform(USceneComponent& SceneComponent, TOptional<FString> CustomUniqueObjectId = {}, bool bKeepObjectState = true);
 
+	/** @returns the saved state of the object with the given UniqueObjectId, or nullptr. */
+	const FLevelObjectSaveGameState* FindObjectState(const FString& UniqueObjectId) const;
+
 	/** Constructs a unique object id for given object based on the objects PathName, with some adjustments to the world-path prefix. */
-	static FString MakeSafeUniqueObjectId(const UObject& Object);
+	FString MakeSafeUniqueObjectId(const UObject& Object) const;
+
+	/** Redirects for any UniqueObjectId's of upcoming registering objects. Can also replace substring of UniqueObjectId's. */
+	void RegisterUniqueObjectIdRedirects(const TMap<FString, FString>& AdditionalUniqueObjectIdRedirects);
 
 	// - USaveGameModule
 	virtual void Serialize(FArchive& Ar) override;
@@ -106,17 +116,19 @@ public:
 
 protected:
 	/** Conflict resolution behavior when upgrading the SaveGameModule to a newer version. */
-	UPROPERTY(Transient, Config, EditDefaultsOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(Transient, Config, EditDefaultsOnly, Category = "SaveGame")
 	ELevelObjectRestorerConflictResolutionPolicy ConflictResolutionPolicy = ELevelObjectRestorerConflictResolutionPolicy::KeepExistingDiscardConflicting;
 
-	UPROPERTY(Transient, VisibleAnywhere, meta = (DisplayThumbnail = "false"), Category = "Weekend Utils|Save Game")
+	UPROPERTY(Transient, VisibleAnywhere, meta = (DisplayThumbnail = "false"), Category = "SaveGame")
 	TSet<TWeakObjectPtr<UObject>> SimpleRegisteredObjects = {};
-	UPROPERTY(Transient, VisibleAnywhere, meta = (DisplayThumbnail = "false"), Category = "Weekend Utils|Save Game")
+	UPROPERTY(Transient, VisibleAnywhere, meta = (DisplayThumbnail = "false"), Category = "SaveGame")
 	TSet<TWeakObjectPtr<UObject>> RegisteredObjectsWithTransform = {};
-	UPROPERTY(Transient, VisibleAnywhere, meta = (DisplayThumbnail = "false"), Category = "Weekend Utils|Save Game")
+	UPROPERTY(Transient, VisibleAnywhere, meta = (DisplayThumbnail = "false"), Category = "SaveGame")
 	TMap<TWeakObjectPtr<UObject>, FString> UniqueIdsOfRegisteredObjects = {};
+	UPROPERTY(Transient, VisibleAnywhere, Category = "SaveGame")
+	TMap<FString, FString> UniqueObjectIdRedirects = {};
 
-	UPROPERTY(SaveGame, VisibleAnywhere, Category = "Weekend Utils|Save Game")
+	UPROPERTY(SaveGame, VisibleAnywhere, Category = "SaveGame")
 	TMap<FString, FLevelObjectSaveGameState> ObjectStates;
 
 	virtual void SaveObjectToState(UObject& Object, bool bSaveTransform, FLevelObjectSaveGameState& InOutState) const;

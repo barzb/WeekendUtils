@@ -10,40 +10,45 @@
 #include "GameService/WorldGameServiceRunner.h"
 
 #include "WeekendGameService.h"
+#include "Engine/World.h"
 #include "GameService/GameModeServiceConfigBase.h"
 #include "GameService/GameServiceBase.h"
 #include "GameService/GameServiceManager.h"
+#include "GameService/GameServiceWorldBootstrapper.h"
 #include "GameService/WorldServiceConfigBase.h"
+#include "Subsystems/SubsystemCollection.h"
 
 namespace Internal
 {
 	static TStrongObjectPtr<UGameServiceConfig> GConfigInstanceForNextWorld = nullptr;
+	static TOptional<bool> GAutoStartServicesForNextWorld = {}; 
 }
 
 bool UWorldGameServiceRunner::DoesSupportWorldType(const EWorldType::Type WorldType) const
 {
 	switch (WorldType)
 	{
-		// Only create in game worlds:
-		case EWorldType::Game:
-		case EWorldType::PIE:
-			return true;
+	// Only create in game worlds:
+	case EWorldType::Game:
+	case EWorldType::PIE:
+		return true;
 
-		case EWorldType::None:
-		case EWorldType::Editor:
-		case EWorldType::EditorPreview:
-		case EWorldType::GamePreview:
-		case EWorldType::GameRPC:
-		case EWorldType::Inactive:
-		default: return false;
+	case EWorldType::None:
+	case EWorldType::Editor:
+	case EWorldType::EditorPreview:
+	case EWorldType::GamePreview:
+	case EWorldType::GameRPC:
+	case EWorldType::Inactive:
+	default:
+		return false;
 	}
 }
 
 bool UWorldGameServiceRunner::ShouldCreateSubsystem(UObject* Outer) const
 {
-	// Do not start services for the dummy world that gets initialized on engine startup:
+	// Do not start services for the dummy world that gets initialized on engine startup, see UWorld::CreateWorld()
 	return Super::ShouldCreateSubsystem(Outer) &&
-		(GIsAutomationTesting || Outer->HasAnyFlags(RF_WasLoaded));
+		(GIsAutomationTesting || Outer->GetName() != "Untitled");
 }
 
 void UWorldGameServiceRunner::Initialize(FSubsystemCollectionBase& Collection)
@@ -60,9 +65,9 @@ void UWorldGameServiceRunner::Initialize(FSubsystemCollectionBase& Collection)
 		Collection.InitializeDependency(WorldSubsystemDependency);
 	}
 
-	// (i) Don't automatically start services in tests, they will be started on-demand.
-	if (!GIsAutomationTesting)
+	if (bAutoStartServicesForNextWorld)
 	{
+		RunWorldBootstrappers();
 		StartRegisteredServices();
 	}
 }
@@ -108,14 +113,26 @@ void UWorldGameServiceRunner::Deinitialize()
 
 void UWorldGameServiceRunner::SetServiceConfigForNextWorld(UGameServiceConfig& ServiceConfig)
 {
-	ensure(!Internal::GConfigInstanceForNextWorld.IsValid());
 	Internal::GConfigInstanceForNextWorld = TStrongObjectPtr(&ServiceConfig);
+	Internal::GAutoStartServicesForNextWorld.Reset();
+	UE_LOG(LogGameService, Log, TEXT("Setting %s as GameServiceConfig for the next world to start."), *ServiceConfig.GetName());
+}
+
+void UWorldGameServiceRunner::SetServiceConfigForNextWorld(UGameServiceConfig& ServiceConfig, bool bAutoStartServices)
+{
+	Internal::GConfigInstanceForNextWorld = TStrongObjectPtr(&ServiceConfig);
+	Internal::GAutoStartServicesForNextWorld = bAutoStartServices;
 	UE_LOG(LogGameService, Log, TEXT("Setting %s as GameServiceConfig for the next world to start."), *ServiceConfig.GetName());
 }
 
 void UWorldGameServiceRunner::RegisterAutoServiceConfigs()
 {
 	UGameServiceManager& GameServiceManager = UGameServiceManager::SummonInstance(this);
+
+	// By default, don't automatically start services in tests as they should be started on-demand:
+	bAutoStartServicesForNextWorld = Internal::GAutoStartServicesForNextWorld.Get(!GIsAutomationTesting);
+	Internal::GAutoStartServicesForNextWorld.Reset();
+
 	if (Internal::GConfigInstanceForNextWorld.IsValid())
 	{
 		GameServiceManager.RegisterServices(*Internal::GConfigInstanceForNextWorld);
@@ -138,6 +155,35 @@ void UWorldGameServiceRunner::RegisterAutoServiceConfigs()
 			*GetNameSafe(AutoConfig->GetClass()), *GetNameSafe(GetWorld()));
 
 		GameServiceManager.RegisterServices(*AutoConfig);
+	}
+}
+
+void UWorldGameServiceRunner::RunWorldBootstrappers()
+{
+	// Configs by GameMode:
+	if (const UGameModeServiceConfigBase* AutoConfig = UGameModeServiceConfigBase::FindConfigForWorld(*GetWorld()))
+	{
+		UE_LOG(LogGameService, Log, TEXT("Matching GameModeServiceConfig (%s) found for current world (%s)."),
+			*GetNameSafe(AutoConfig->GetClass()), *GetNameSafe(GetWorld()));
+
+		for (const TSubclassOf<UGameServiceWorldBootstrapper>& BootstrapperClass : AutoConfig->GetWorldBootstrappers())
+		{
+			UGameServiceWorldBootstrapper* BootstrapperInstance = NewObject<UGameServiceWorldBootstrapper>(GetWorld(), BootstrapperClass);
+			BootstrapperInstance->BootstrapOuterWorld(GetWorldRef());
+		}
+	}
+
+	// Configs by World name:
+	if (const UWorldServiceConfigBase* AutoConfig = UWorldServiceConfigBase::FindConfigForWorld(*GetWorld()))
+	{
+		UE_LOG(LogGameService, Log, TEXT("Matching WorldServiceConfig (%s) found for current world (%s)."),
+			*GetNameSafe(AutoConfig->GetClass()), *GetNameSafe(GetWorld()));
+
+		for (const TSubclassOf<UGameServiceWorldBootstrapper>& BootstrapperClass : AutoConfig->GetWorldBootstrappers())
+		{
+			UGameServiceWorldBootstrapper* BootstrapperInstance = NewObject<UGameServiceWorldBootstrapper>(GetWorld(), BootstrapperClass);
+			BootstrapperInstance->BootstrapOuterWorld(GetWorldRef());
+		}
 	}
 }
 

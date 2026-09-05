@@ -38,7 +38,7 @@ FArchive& FWeekendUtilsSubobjectProxyArchive::operator<<(UObject*& Obj)
 		if (IsSubObjectOfOwner != "1")
 		{
 			// Find/load objects from the asset registry (= asset pointers):
-			Obj = FindObject<UObject>(nullptr, *ObjectPath);
+			Obj = FindObject<UObject>(nullptr, *ObjectPath, EFindObjectFlags::None);
 			if (!Obj && bLoadIfFindFails)
 			{
 				Obj = LoadObject<UObject>(nullptr, *ObjectPath);

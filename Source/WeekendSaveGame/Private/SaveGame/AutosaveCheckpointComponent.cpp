@@ -12,11 +12,9 @@
 #include "SaveGame/AutosaveCheckpointRegistry.h"
 
 #if WITH_EDITOR
-#include "Editor.h"
-#include "Editor/EditorEngine.h"
-#include "Engine/Engine.h"
+#include "Logging/MessageLog.h"
 #include "Misc/DataValidation.h"
-#include "Misc/MessageDialog.h"
+#include "Misc/UObjectToken.h"
 #endif
 
 UAutosaveCheckpointComponent::UAutosaveCheckpointComponent()
@@ -27,7 +25,16 @@ UAutosaveCheckpointComponent::UAutosaveCheckpointComponent()
 
 void UAutosaveCheckpointComponent::RequestAutosaveAtCheckpoint()
 {
-	if (LinkedCheckpoint)
+	if (!LinkedCheckpoint.IsValid())
+	{
+		const AAutosaveCheckpointRegistry* CheckpointRegistry = AAutosaveCheckpointRegistry::TrySummon(GetWorld());
+		if (AAutosaveCheckpoint* Checkpoint = CheckpointRegistry ? CheckpointRegistry->GetRegisteredCheckpoint(*GetReadableName()) : nullptr)
+		{
+			LinkedCheckpoint = Checkpoint;
+		}
+	}
+
+	if (LinkedCheckpoint.IsValid())
 	{
 		LinkedCheckpoint->RequestAutosaveHere();
 	}
@@ -51,88 +58,57 @@ void UAutosaveCheckpointComponent::OnRegister()
 		return;
 
 #if WITH_EDITOR
-	if (GEngine)
-	{
-		GEngine->OnActorMoved().AddUObject(this, &ThisClass::HandleEditorActorMoved);
-		GEngine->OnLevelActorDeleted().AddUObject(this, &ThisClass::HandleLevelActorDeleted);
-		FCoreDelegates::OnActorLabelChanged.AddUObject(this, &ThisClass::HandleActorLabelChanged);
-	}
-
-	// (i) Re-instanced actors are not "done" constructing, yet. Their properties have not yet been copied from the original actor.
-	// This can lead to spawning a duplicate checkpoint with a default name. OnRegister is called again once the process is complete.
-	// (i) Transient actors should also skip the creation of checkpoints. Preview actors about to be placed in the editor viewport
-	// are usually transient. They are replaced by a proper actor after placement has completed, and OnRegister is called again.
-	if (!LinkedCheckpoint && !GIsReinstancing && !GetOwner()->HasAnyFlags(RF_Transient))
-#else
-	if (!LinkedCheckpoint)
-#endif
-	{
-		FindOrCreateCheckpoint();
-	}
-}
-
-void UAutosaveCheckpointComponent::OnUnregister()
+void UAutosaveCheckpointComponent::CheckForErrors()
 {
-#if WITH_EDITOR
-	if (GEngine)
+	Super::CheckForErrors();
+
+	if (!LinkedCheckpoint.IsValid())
 	{
-		GEngine->OnActorMoved().RemoveAll(this);
-		GEngine->OnLevelActorDeleted().RemoveAll(this);
-		FCoreDelegates::OnActorLabelChanged.RemoveAll(this);
+		FMessageLog("MapCheck").Error()
+			->AddToken(FUObjectToken::Create(this))
+			->AddText(INVTEXT("LinkedAutosaveCheckpoint is invalid, but must be linked to a valid AutosaveCheckpoint actor."))
+			->AddToken(FActionToken::Create(FText::FromString("Attempt fix"), FText(),
+				FOnActionTokenExecuted::CreateWeakLambda(this, [this]()
+				{
+					AAutosaveCheckpointRegistry* CheckpointRegistry = AAutosaveCheckpointRegistry::TrySummon(GetWorld());
+					if (!IsValid(CheckpointRegistry))
+						return;
+
+					if (AAutosaveCheckpoint* FoundCheckpoint = CheckpointRegistry->GetRegisteredCheckpoint(*GetReadableName()))
+					{
+						LinkedCheckpoint = FoundCheckpoint;
+						Modify();
+
+						FMessageLog("AssetCheck").Info()
+							->AddToken(FUObjectToken::Create(this))
+							->AddText(FText::FromString("was linked to"))
+							->AddToken(FUObjectToken::Create(FoundCheckpoint));
+					}
+					else
+					{
+						FMessageLog("AssetCheck").Error()
+							->AddToken(FUObjectToken::Create(this))
+							->AddText(FText::FromString("attempted to find AutosaveCheckpoint for \"" + GetReadableName() + "\" was NOT successful."))
+							->AddText(FText::FromString("Please manually link a checkpoint to the component."));
+					}
+				}), true));
 	}
-#endif
-
-	Super::OnUnregister();
-}
-
-#if WITH_EDITOR
-void UAutosaveCheckpointComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
-{
-	// Checkpoint class changed -> Respawn checkpoint:
-	if (PropertyChangedEvent.GetMemberPropertyName() == GET_MEMBER_NAME_CHECKED(ThisClass, CheckpointClass) &&
-		LinkedCheckpoint && LinkedCheckpoint->GetClass() != CheckpointClass)
-	{
-		RespawnCheckpoint();
-	}
-
-	// A checkpoint is linked, but it's not very valid, so let's respawn it:
-	if (PropertyChangedEvent.GetMemberPropertyName() == GET_MEMBER_NAME_CHECKED(ThisClass, LinkedCheckpoint) &&
-		!LinkedCheckpoint.IsNull() && !LinkedCheckpoint.IsValid())
-	{
-		RespawnCheckpoint();
-	}
-
-	// Checkpoint should be attached to us, but isn't:
-	if (LinkedCheckpoint && !LinkedCheckpoint->IsAttachedTo(GetOwner()) && !GetOwner()->GetIsSpatiallyLoaded())
-	{
-		LinkedCheckpoint->AttachToComponent(this, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-	}
-
-	// PlayerStart tag is not up to date:
-	if (LinkedCheckpoint && LinkedCheckpoint->PlayerStartTag != *GetReadableName())
-	{
-		RenameCheckpoint();
-	}
-
-	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 
 EDataValidationResult UAutosaveCheckpointComponent::IsDataValid(FDataValidationContext& Context) const
 {
-	EDataValidationResult Result = Super::IsDataValid(Context);
-
-	if (!IsValid(CheckpointClass))
+	EDataValidationResult Result{Super::IsDataValid(Context)};
+	if (!IsTemplate())
 	{
-		Context.AddError(FText::Format(INVTEXT("{0} has invalid CheckpointClass: {1}"), FText::FromString(GetReadableName()), FText::FromString(GetNameSafe(CheckpointClass))));
-		Result = CombineDataValidationResults(Result, EDataValidationResult::Invalid);
+		if (!LinkedCheckpoint)
+		{
+			Result = CombineDataValidationResults(Result, EDataValidationResult::Invalid);
+			Context.AddMessage(EMessageSeverity::Error)
+				->AddToken(FUObjectToken::Create(GetOwner()))
+				->AddToken(FUObjectToken::Create(this))
+				->AddText(INVTEXT("LinkedAutosaveCheckpoint is invalid, but must be linked to a valid AutosaveCheckpoint actor"));
+		}
 	}
-
-	if (!IsTemplate() && GetWorld() && !GetWorld()->IsPreviewWorld() && !LinkedCheckpoint)
-	{
-		Context.AddError(FText::Format(INVTEXT("{0} does not link to any AutosaveCheckpoint actor. Was it deleted?"), FText::FromString(GetReadableName())));
-		Result = CombineDataValidationResults(Result, EDataValidationResult::Invalid);
-	}
-
 	return Result;
 }
 #endif

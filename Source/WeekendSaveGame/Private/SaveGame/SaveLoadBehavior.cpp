@@ -84,6 +84,7 @@ USaveGame& USaveLoadBehavior::DuplicateSaveGameObject(USaveGameService& SaveGame
 {
 	const UModularSaveGame* ModularSaveToDuplicate = CastChecked<UModularSaveGame>(&SaveGameToCopy);
 	UModularSaveGame* Duplicate = DuplicateObject<UModularSaveGame>(ModularSaveToDuplicate, &SaveGameService);
+	Duplicate->ClearFlags(RF_ClassDefaultObject | RF_ArchetypeObject | RF_DefaultSubObject); // Clear CDO flags from duplication.
 	Duplicate->SetInstancedHeaderData(FInstancedStruct(*ModularSaveToDuplicate->GetInstancedHeaderData()));
 
 	return *Duplicate;

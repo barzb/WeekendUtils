@@ -10,6 +10,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Templates/SubclassOf.h"
 #include "UObject/Object.h"
 
 #include "SaveLoadBehavior.generated.h"
@@ -108,7 +109,7 @@ public:
 	// --
 
 protected:
-	UPROPERTY(EditDefaultsOnly, Category = "Weekend Utils|Save Game")
+	UPROPERTY(EditDefaultsOnly, Category = "SaveGame")
 	TSet<FString> SaveSlotNames;
 
 	virtual void HandlePreloadCompleted(USaveGameService& SaveGameService, TArray<USaveGame*> PreloadedSaveGames, TArray<FSlotName> PreloadedSlotNames);

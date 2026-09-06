@@ -12,6 +12,8 @@
 #include "CoreMinimal.h"
 #include "EnumUtils.h"
 
+#include "CommonYesNoEnum.generated.h"
+
 ///////////////////////////////////////////////////////////////////////////////////////
 /// UFUNCTION(BlueprintCallable, BlueprintPure = False, ExpandEnumAsExecs = "ReturnValue")
 /// ECommonYesNo BranchYesOrNo() const;

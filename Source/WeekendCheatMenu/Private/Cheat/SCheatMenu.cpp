@@ -832,7 +832,7 @@ TSharedRef<SWidget> SCheatMenu::ConstructArgumentInput(const ICheatMenuAction::F
 				.Justification(ETextJustify::Right)
 				.MinDesiredWidth(MinDesiredWith * 3.f)
 				.OverflowPolicy(ETextOverflowPolicy::MiddleEllipsis)
-				.OnTextChanged_Lambda([InOutValue, AllOptions, FilteredOptions, ComboboxId](const FText& NewText)
+				.OnTextChanged_Lambda([this, InOutValue, AllOptions, FilteredOptions, ComboboxId](const FText& NewText)
 				{
 					*InOutValue = NewText.ToString();
 					const FString& FilterStr = *InOutValue;
@@ -846,7 +846,7 @@ TSharedRef<SWidget> SCheatMenu::ConstructArgumentInput(const ICheatMenuAction::F
 						}
 					}
 
-					TWeakPtr<SComboBox<TSharedPtr<FString>>>* ComboBoxPtr = CheatMenuComboBoxPointers.Find(ComboboxId);
+					TWeakPtr<SComboBox<TSharedPtr<FString>>>* ComboBoxPtr = ComboBoxPointers.Find(ComboboxId);
 					if (ComboBoxPtr && ComboBoxPtr->IsValid())
 					{
 						TSharedPtr<SComboBox<TSharedPtr<FString>>> PinnedComboBox = ComboBoxPtr->Pin();

@@ -12,6 +12,8 @@
 #include "CoreMinimal.h"
 #include "EnumUtils.h"
 
+#include "CommonHandledReplyEnum.generated.h"
+
 ///////////////////////////////////////////////////////////////////////////////////////
 /// UFUNCTION(BlueprintCallable, BlueprintPure = False, ExpandEnumAsExecs = "ReturnValue")
 /// ECommonHandledReply BranchHandledReply() const;

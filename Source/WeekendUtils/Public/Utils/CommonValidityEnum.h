@@ -12,6 +12,8 @@
 #include "CoreMinimal.h"
 #include "EnumUtils.h"
 
+#include "CommonValidityEnum.generated.h"
+
 ///////////////////////////////////////////////////////////////////////////////////////
 /// UFUNCTION(BlueprintCallable, BlueprintPure = False, ExpandEnumAsExecs = "ReturnValue")
 /// ECommonValidity BranchValidity() const;

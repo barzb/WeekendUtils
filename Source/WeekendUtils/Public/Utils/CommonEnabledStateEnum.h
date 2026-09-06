@@ -12,6 +12,8 @@
 #include "CoreMinimal.h"
 #include "EnumUtils.h"
 
+#include "CommonEnabledStateEnum.generated.h"
+
 ///////////////////////////////////////////////////////////////////////////////////////
 /// UFUNCTION(BlueprintCallable, BlueprintPure = False, ExpandEnumAsExecs = "ReturnValue")
 /// ECommonEnabledState BranchIsEnabled() const;

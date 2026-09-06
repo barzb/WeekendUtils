@@ -1,4 +1,4 @@
-﻿///////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////
 /// Copyright (C) by Benjamin Barz and contributors. See file: CREDITS.md
 ///
 /// This file is part of the WeekendUtils UE5 Plugin.
@@ -176,10 +176,11 @@ T& UModularSaveGame::FindOrAddModule(const FName& ModuleName, const TSubclassOf<
 		return *ExistingModule;
 	}
 
+	checkf(ModuleName != NAME_None, TEXT("Tried to add module %s with unset name. ModuleName must not be empty or unset!"),
+		*ModuleClass->GetName());
+
 	T* NewModule = NewObject<T>(this, ModuleClass);
 	Modules.Add(ModuleName, NewModule);
-	checkf(ModuleName != NAME_None, TEXT("Tried to add module %s with unset name. ModuleName must not be empty or unset!."),
-		*ModuleClass->GetName(), *ModuleName.ToString());
 	return *NewModule;
 }
 
